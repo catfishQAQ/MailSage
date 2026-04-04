@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 幽灵文本斜体浅灰样式 */
+.ghost-text::placeholder {
+  font-style: italic;
+  color: #9ca3af;
+}
