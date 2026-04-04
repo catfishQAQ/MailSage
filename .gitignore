@@ -1,10 +1,8 @@
-# ── 敏感配置 & 数据（绝对不能上传）────────
-# backend/.env 含 SECRET_KEY，泄露会导致所有邮箱密码被解密
+# ── Sensitive config & data (never upload) ──
 backend/.env
-# SQLite 数据库含用户邮件正文和加密后的授权码
 backend/*.db
 
-# ── Python 编译缓存 & 虚拟环境 ────────────
+# ── Python cache & virtual environments ─────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -13,20 +11,20 @@ backend/.venv/
 venv/
 env/
 
-# ── 前端依赖 & 构建产物 ────────────────────
+# ── Frontend dependencies & build output ────
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
-# ── 个人笔记 & 临时文件 ────────────────────
+# ── Personal notes & temp files ─────────────
 need-to-change.txt
 PRD.md
 
-# ── 系统 & IDE ────────────────────────────
+# ── OS & IDE ────────────────────────────────
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 
-# ── 日志 ──────────────────────────────────
+# ── Logs ────────────────────────────────────
 *.log
