@@ -12,12 +12,14 @@ import email as email_lib
 import imaplib
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 
 import bleach
+from bleach.css_sanitizer import CSSSanitizer
 from bs4 import BeautifulSoup
 from sqlalchemy import select
 
@@ -43,6 +45,16 @@ ALLOWED_ATTRS = {
     "*":   ["style"],
 }
 _CLEAN_PROTOCOLS = ["http", "https", "data", "mailto"]
+_CSS_SANITIZER = CSSSanitizer(allowed_css_properties=[
+    "color", "background-color", "background",
+    "font-size", "font-weight", "font-style", "font-family",
+    "text-align", "text-decoration",
+    "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+    "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+    "border", "border-collapse", "border-spacing",
+    "width", "height", "max-width",
+    "display", "vertical-align", "line-height",
+])
 
 
 def _decode_str(s: str | bytes | None) -> str:
@@ -105,6 +117,7 @@ def _extract_body(msg: email_lib.message.Message) -> tuple[str, str]:
                     raw_html = raw_html.replace(f"cid:{cid}", data_uri)
                 body_html = bleach.clean(_strip_non_visual_tags(raw_html),
                                          tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS,
+                                         css_sanitizer=_CSS_SANITIZER,
                                          strip=True, protocols=_CLEAN_PROTOCOLS)
     else:
         ct = msg.get_content_type()
@@ -114,6 +127,7 @@ def _extract_body(msg: email_lib.message.Message) -> tuple[str, str]:
         if ct == "text/html":
             body_html = bleach.clean(_strip_non_visual_tags(text),
                                      tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS,
+                                     css_sanitizer=_CSS_SANITIZER,
                                      strip=True, protocols=_CLEAN_PROTOCOLS)
             _soup = BeautifulSoup(text, "html.parser")
             for _tag in _soup.find_all(["style", "script"]):
@@ -182,14 +196,33 @@ def _do_sync_blocking(account_data: dict, password: str) -> tuple[list[dict], in
         return [], last_uid
 
     uid_set = ",".join(uids_to_fetch)
-    typ, fetch_data = imap.uid("fetch", uid_set, "(RFC822 UID FLAGS)")
+
+    # Step 1：仅拉 UID + FLAGS（无 literal，响应格式固定，可靠解析）
+    # 不依赖字面量响应结构，避免 BODY.PEEK[] 和 RFC822 响应格式差异导致 UID=0
+    uid_flags_map: dict[int, bool] = {}  # {uid: is_read}
+    typ_f, flags_data = imap.uid("fetch", uid_set, "(UID FLAGS)")
+    if flags_data:
+        for item in flags_data:
+            # imaplib 对无 literal 的响应通常返回 bytes，但部分服务器/版本返回 tuple
+            if isinstance(item, bytes):
+                line = item.decode(errors="replace")
+            elif isinstance(item, tuple):
+                line = item[0].decode(errors="replace")
+            else:
+                continue
+            uid_match = re.search(r'UID\s+(\d+)', line, re.IGNORECASE)
+            uid_val = int(uid_match.group(1)) if uid_match else 0
+            if uid_val:
+                uid_flags_map[uid_val] = "\\Seen" in line
+
+    # Step 2：拉邮件正文（PEEK 不触发 \Seen）
+    typ, fetch_data = imap.uid("fetch", uid_set, "(BODY.PEEK[])")
 
     parsed_emails: list[dict] = []
     max_uid = last_uid
 
-    # imaplib fetch 响应：data 是列表，每封邮件对应一个 tuple(header_bytes, raw_bytes)
-    # 例如：[(b'1 (UID 123 FLAGS (...) RFC822 {size}', b'...raw...'), b')', ...]
-    for item in fetch_data:
+    # Gmail 等服务器可能将 UID 放在字面量之后的 trailing 元素，需一并检查
+    for idx, item in enumerate(fetch_data):
         if not isinstance(item, tuple):
             continue
         try:
@@ -200,15 +233,17 @@ def _do_sync_blocking(account_data: dict, password: str) -> tuple[list[dict], in
 
             msg = email_lib.message_from_bytes(raw)
 
-            # 从 header_line 解析 UID："123 (UID 456 FLAGS ..."
-            uid_val = 0
-            parts = header_line.split()
-            for j, p in enumerate(parts):
-                if p == "UID" and j + 1 < len(parts):
-                    try:
-                        uid_val = int(parts[j + 1])
-                    except ValueError:
-                        pass
+            # UID 可能在 item[0]，也可能在紧随其后的 trailing bytes 元素
+            trailing = ""
+            if idx + 1 < len(fetch_data) and isinstance(fetch_data[idx + 1], bytes):
+                trailing = fetch_data[idx + 1].decode(errors="replace")
+            uid_line = header_line + trailing
+
+            uid_match = re.search(r'UID\s+(\d+)', uid_line, re.IGNORECASE)
+            uid_val = int(uid_match.group(1)) if uid_match else 0
+
+            # 从 Step 1 的映射获取 is_read；若映射里没有则回退到 False
+            is_read = uid_flags_map.get(uid_val, False)
 
             message_id = msg.get("Message-ID", "").strip() or str(uuid.uuid4())
             subject = _decode_str(msg.get("Subject", "（无主题）"))
@@ -230,8 +265,6 @@ def _do_sync_blocking(account_data: dict, password: str) -> tuple[list[dict], in
 
             body_text, body_html = _extract_body(msg)
             has_attach = _has_attachments(msg)
-            # 从 header_line 检查 IMAP \Seen 标志（已在原账号中读过的邮件）
-            is_read = "\\Seen" in header_line
 
             parsed_emails.append({
                 "id": message_id,
@@ -254,6 +287,53 @@ def _do_sync_blocking(account_data: dict, password: str) -> tuple[list[dict], in
 
     imap.logout()
     return parsed_emails, max_uid
+
+
+def _fetch_flags_blocking(account_data: dict, password: str, uids: list[int]) -> dict[int, bool]:
+    """
+    仅获取指定 UID 列表的 IMAP FLAGS（不下载正文），返回 {uid: is_read}。
+    用于修正本地已存邮件的 is_read / ai_status。
+    """
+    if not uids:
+        return {}
+    imap = imaplib.IMAP4_SSL(account_data["imap_host"], account_data["imap_port"])
+    imap.login(account_data["email"], password)
+    try:
+        imap.send(b'ZIDCMD1 ID ("name" "MailSage" "version" "1.0")\r\n')
+        while True:
+            line = imap.readline()
+            if line.startswith(b'ZIDCMD1'):
+                break
+    except Exception:
+        pass
+    typ, _ = imap.select("INBOX")
+    if typ != "OK":
+        imap.logout()
+        return {}
+
+    result: dict[int, bool] = {}
+    for i in range(0, len(uids), 100):
+        batch = uids[i:i + 100]
+        uid_set = ",".join(str(u) for u in batch)
+        try:
+            typ2, data = imap.uid("fetch", uid_set, "(UID FLAGS)")
+            logger.info("[flags] fetch typ=%s data_len=%d", typ2, len(data) if data else 0)
+            if typ2 != "OK" or not data or data[0] is None:
+                continue
+            for item in data:
+                raw_line = item if isinstance(item, bytes) else item[0]
+                line = raw_line.decode(errors="replace")
+                logger.info("[flags] raw item: %r", line)
+                uid_match = re.search(r'UID\s+(\d+)', line, re.IGNORECASE)
+                uid_val = int(uid_match.group(1)) if uid_match else 0
+                if uid_val:
+                    result[uid_val] = "\\Seen" in line
+        except Exception as e:
+            logger.warning("获取 FLAGS 失败 (batch %d): %s", i, e)
+
+    logger.info("[flags] 解析结果 uid->is_read: %s", result)
+    imap.logout()
+    return result
 
 
 def _mark_as_read_blocking(account_data: dict, password: str, uid: int):
@@ -367,6 +447,40 @@ async def _do_sync(account_data: dict, password: str) -> int:
             acc = await session.get(Account, account_data["id"])
             if acc:
                 acc.last_uid = max_uid
+
+        # 双向同步已存邮件的已读状态：
+        #   IMAP 已读 + 本地未读(pending) → is_read=True, ai_status=completed
+        #   IMAP 未读 + 本地已读          → is_read=False, ai_status=pending（用户在原账号重新标为未读）
+        all_emails_result = await session.execute(
+            select(Email).where(
+                Email.account_id == account_data["id"],
+                Email.uid > 0,
+            )
+        )
+        all_emails = all_emails_result.scalars().all()
+        logger.info("[flags] 本地邮件总数=%d", len(all_emails))
+        if all_emails:
+            all_uids = [e.uid for e in all_emails]
+            uid_flags = await loop.run_in_executor(
+                None, _fetch_flags_blocking, account_data, password, all_uids
+            )
+            logger.info("[flags] IMAP 返回 flags 数=%d", len(uid_flags))
+            changed = 0
+            for email in all_emails:
+                imap_read = uid_flags.get(email.uid)
+                if imap_read is None:
+                    continue  # IMAP 未返回该 UID（已删除/移走），跳过
+                if imap_read and not email.is_read:
+                    email.is_read = True
+                    if email.ai_status == AIStatus.pending:
+                        email.ai_status = AIStatus.completed
+                    changed += 1
+                elif not imap_read and email.is_read:
+                    email.is_read = False
+                    email.ai_status = AIStatus.pending
+                    changed += 1
+                    logger.info("[flags] 邮件重新标为未读: uid=%d subject=%r", email.uid, email.subject)
+            logger.info("[flags] 状态变更邮件数=%d", changed)
 
         await session.commit()
 
