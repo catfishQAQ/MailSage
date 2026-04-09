@@ -1,213 +1,211 @@
-# MailSage 安装指南
+# MailSage Installation Guide
 
-## 环境要求
+## Requirements
 
-| 工具 | 最低版本 | 说明 |
+| Tool | Minimum Version | Purpose |
 |---|---|---|
-| Python | 3.11+ | 后端运行时 |
-| Node.js | 18+ | 前端构建工具 |
-| Ollama | 最新版 | 本地 AI 引擎 |
+| Python | 3.11+ | Backend runtime |
+| Node.js | 18+ | Frontend build tooling |
+| Ollama | Latest | Local AI runtime |
 
 ---
 
-## 第一步：安装 Ollama 并下载模型
+## Step 1: Install Ollama and Download a Model
 
-### 1.1 安装 Ollama
+### 1.1 Install Ollama
 
-前往 [https://ollama.com/download](https://ollama.com/download) 下载对应系统的安装包并完成安装。
+Download the installer for your operating system from [https://ollama.com/download](https://ollama.com/download) and complete the installation.
 
-安装完成后，Ollama 会在后台自动运行（默认监听 `http://localhost:11434`）。
+After installation, Ollama usually runs in the background and listens on `http://localhost:11434` by default.
 
-### 1.2 下载 qwen3:4b 模型
+### 1.2 Download the `qwen3:4b` model
 
-打开终端，执行：
+Run this command in your terminal:
 
 ```bash
 ollama pull qwen3:4b
 ```
 
-> 模型约 2.6 GB，下载时间取决于网络速度。下载完成后可用 `ollama list` 确认。
+> The model is about 2.6 GB. Download time depends on your network speed. You can verify it with `ollama list` after the download finishes.
 
 ---
 
-## 第二步：安装后端
+## Step 2: Install the Backend
 
-> 以下命令均在项目根目录（含 `backend/` 和 `frontend/` 的那层）下执行。
+> Run the following commands from the project root, the directory that contains both `backend/` and `frontend/`.
 
-### 2.1 进入后端目录
+### 2.1 Enter the backend directory
 
 ```bash
 cd backend
 ```
 
-### 2.2 创建并激活虚拟环境（推荐）
+### 2.2 Create and activate a virtual environment
 
-**Windows：**
+**Windows**
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 ```
 
-**macOS / Linux：**
+**macOS / Linux**
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-> 激活后终端前缀会出现 `(.venv)`，表示已进入虚拟环境。
+> Once activated, your terminal prompt should include `(.venv)`.
 
-### 2.3 安装 Python 依赖
+### 2.3 Install Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> 国内网络可加镜像源加速：
-> ```bash
-> pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-> ```
-
-### 2.4 启动后端服务
+### 2.4 Start the backend server
 
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
-看到以下输出说明启动成功：
-```
+If startup succeeds, you should see output similar to:
+
+```text
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 INFO:     Started reloader process
-INFO:     AI 队列 worker 已启动
-INFO:     定时任务调度器已启动（每 2 小时）
+INFO:     AI queue worker started
+INFO:     Scheduler started (every 2 hours)
 ```
 
-**验证：** 浏览器打开 [http://localhost:8000/docs](http://localhost:8000/docs)，可看到完整的 API 文档界面。
+**Verify:** open [http://localhost:8000/docs](http://localhost:8000/docs) in your browser to check the API docs.
 
 ---
 
-## 第三步：安装前端
+## Step 3: Install the Frontend
 
-打开另一个终端窗口（保持后端运行）：
+Open another terminal window and keep the backend running.
 
-### 3.1 进入前端目录
+### 3.1 Enter the frontend directory
 
 ```bash
 cd frontend
 ```
 
-### 3.2 安装 Node.js 依赖
+### 3.2 Install Node.js dependencies
 
 ```bash
 npm install
 ```
 
-### 3.3 启动前端开发服务器
+### 3.3 Start the frontend development server
 
 ```bash
 npm run dev
 ```
 
-看到以下输出说明启动成功：
-```
-  VITE v6.x.x  ready in xxx ms
-  ➜  Local:   http://localhost:5173/
+If startup succeeds, you should see output similar to:
+
+```text
+VITE v6.x.x  ready in xxx ms
+➜  Local:   http://localhost:5173/
 ```
 
-浏览器打开 [http://localhost:5173](http://localhost:5173) 即可使用。
+Then open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 第四步：首次配置
+## Step 4: First-Time Setup
 
-### 4.1 添加邮箱账号
+### 4.1 Add an email account
 
-打开 [http://localhost:5173](http://localhost:5173)，点击左侧边栏底部的 **＋ 添加账号** 按钮，弹出添加账号窗口。
+Open [http://localhost:5173](http://localhost:5173), then click the **+ Add Account** button at the bottom of the left sidebar.
 
-填写以下信息：
+Fill in the following fields:
 
-| 字段 | 说明 |
+| Field | Description |
 |---|---|
-| 邮箱地址 | 完整邮箱地址，例如 `your@163.com` |
-| 显示名称 | 可选，仅用于界面显示 |
-| 授权码 / 应用专用密码 | **不是登录密码**，需在邮箱设置中生成（见下方说明） |
-| IMAP 服务器 / 端口 | 输入邮箱地址后失焦会自动填充，常见邮箱无需手动填写 |
-| SMTP 服务器 / 端口 | 同上，自动填充 |
+| Email address | Your full email address, for example `your@163.com` |
+| Display name | Optional, used only in the UI |
+| Authorization code / app password | **Not your login password**. Generate it in your mailbox security settings |
+| IMAP server / port | Auto-filled for common providers after you finish entering the email address |
+| SMTP server / port | Auto-filled the same way |
 
-点击 **添加** 后，系统会自动触发首次同步（拉取最近 200 封邮件）。
+After clicking **Add**, MailSage will start the first sync automatically and fetch the latest 200 emails.
 
-> **自动填充支持：** 163、126、yeah.net、QQ、Foxmail、Gmail、Outlook、Hotmail、Live
+> **Built-in presets:** 163, 126, yeah.net, QQ, Foxmail, Gmail, Outlook, Hotmail, Live
 
-#### 如何获取授权码
+#### How to get an app password
 
-**QQ 邮箱：**
-1. 打开 QQ 邮箱网页版 → 设置 → 账号
-2. 找到「POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV 服务」
-3. 开启「IMAP/SMTP 服务」，按提示发送短信验证
-4. 生成并复制授权码
+**QQ Mail**
+1. Open QQ Mail on the web, then go to Settings -> Accounts.
+2. Find the mail services section for POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV.
+3. Enable IMAP/SMTP and complete the SMS verification if required.
+4. Generate and copy the authorization code.
 
-**163 邮箱：**
-1. 打开 163 邮箱 → 设置 → POP3/SMTP/IMAP
-2. 开启 IMAP/SMTP 服务，设置授权密码
+**163 Mail**
+1. Open 163 Mail, then go to Settings -> POP3/SMTP/IMAP.
+2. Enable IMAP/SMTP and create an authorization password.
 
-**Gmail：**
-1. 开启两步验证（账号安全设置）
-2. 搜索「应用专用密码」，为 MailSage 生成一个 16 位密码
+**Gmail**
+1. Enable 2-Step Verification in your Google account security settings.
+2. Search for "App Passwords" and create a 16-character password for MailSage.
 
-### 4.2 设置个人身份预设（Persona）
+### 4.2 Set your persona
 
-在前端界面左侧边栏底部点击 **⚙️ 身份预设**，填入你的角色信息：
+Click **Settings / Persona** in the lower-left area of the app and fill in your profile information:
 
-- **职业角色：** 例如「计算机视觉研究员」
-- **关注领域：** 例如「自动驾驶模型的对抗性攻击、VAEs 架构调试」
-- **语气偏好：** 例如「专业、客观、直接」
+- **Role:** for example, `Computer vision researcher`
+- **Focus:** for example, `Adversarial attacks on autonomous driving models, VAE architecture debugging`
+- **Tone preference:** for example, `Professional, objective, direct`
 
-这些信息会作为 AI 的上下文，让摘要和回复更贴近你的实际工作场景。
+These fields are used as AI context so summaries and reply drafts better match your real workflow.
 
-### 4.3 运行 AI 批处理
+### 4.3 Run AI batch processing
 
-确认 Ollama 正在运行后，点击左侧边栏底部 **AI 控制台** 中的 **⚡️ 批量处理未读邮件** 按钮。
+Make sure Ollama is running, then click **Batch process unread emails** in the **AI Console** section of the left sidebar.
 
-- 状态灯 🟢 = Ollama 运行中，可触发
-- 状态灯 🟡 = 正在处理队列中
-- 状态灯 ⚪️ = Ollama 未运行，请先启动 Ollama
+- 🟢 means Ollama is running and ready
+- 🟡 means the queue is currently processing
+- ⚪️ means Ollama is not running yet
 
-处理完成后，邮件列表中重要邮件会显示 ⚡️ 标记，点击邮件可查看 AI 摘要卡片和幽灵文本回复建议。
+After processing finishes, important emails will show a ⚡ marker in the list. Open an email to view the AI summary card and ghost reply suggestions.
 
 ---
 
-## 常用命令速查
+## Common Commands
 
 ```bash
-# 启动 Ollama（若未自动运行）
+# Start Ollama if it is not already running
 ollama serve
 
-# 启动后端（在 backend/ 目录，激活虚拟环境后）
+# Start the backend from backend/
 uvicorn main:app --reload --port 8000
 
-# 启动前端（在 frontend/ 目录）
+# Start the frontend from frontend/
 npm run dev
 ```
 
 ---
 
-## 常见问题
+## Troubleshooting
 
-**Q: 前端显示「Ollama 未运行」**
-- 检查 Ollama 是否启动：打开终端运行 `ollama list`，若无响应则运行 `ollama serve`
+**Q: The frontend shows "Ollama is not running"**
+- Run `ollama list` in a terminal to check whether Ollama is available
+- If Ollama is not running, start it with `ollama serve`
 
-**Q: 邮件同步失败**
-- 确认 IMAP 服务已在邮箱设置中开启
-- 确认填写的是授权码/应用密码，不是登录密码
-- QQ 邮箱需每隔一段时间重新生成授权码
+**Q: Email sync failed**
+- Make sure IMAP is enabled in your mailbox settings
+- Make sure you entered an app password or authorization code, not the normal login password
+- QQ Mail may require a newly generated authorization code after some time
 
-**Q: AI 处理结果一直是 `failed`**
-- 确认 `qwen3:4b` 已成功下载：`ollama list`
-- 查看后端终端输出的错误日志
-- 检查系统剩余内存/显存是否足够（qwen3:4b 约需 4GB 内存）
+**Q: AI processing keeps ending in `failed`**
+- Confirm that `qwen3:4b` has been downloaded with `ollama list`
+- Check the backend terminal logs for the actual error
+- Make sure your machine has enough available RAM / VRAM
 
-**Q: `pip install` 报错**
-- 确认 Python 版本 ≥ 3.11：`python --version`
-- 尝试升级 pip：`pip install --upgrade pip`
+**Q: `pip install` fails**
+- Check that your Python version is 3.11 or newer with `python --version`
+- Try upgrading pip with `pip install --upgrade pip`
 
-**Q: 首次启动后端报数据库错误**
-- 删除 `backend/omnimail.db` 文件后重新启动，数据库会自动重建
+**Q: The backend reports a database error on first start**
+- Delete `backend/omnimail.db` and start the backend again so the database can be recreated automatically
