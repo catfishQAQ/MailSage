@@ -88,7 +88,12 @@ if _serve_static_frontend():
 
         @app.get("/{full_path:path}", include_in_schema=False)
         async def spa_fallback(full_path: str):
-            requested_path = frontend_dist / full_path
-            if full_path and requested_path.exists() and requested_path.is_file():
+            requested_path = (frontend_dist / full_path).resolve()
+            if (
+                full_path
+                and requested_path.is_relative_to(frontend_dist)
+                and requested_path.exists()
+                and requested_path.is_file()
+            ):
                 return FileResponse(requested_path)
             return FileResponse(frontend_dist / "index.html")

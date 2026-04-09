@@ -46,6 +46,51 @@ def process_is_running(pid: int) -> bool:
     return True
 
 
+def get_process_command_line(pid: int) -> str:
+    if not process_is_running(pid):
+        return ""
+
+    if os.name == "nt":
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                (
+                    "Get-CimInstance Win32_Process "
+                    f"-Filter \"ProcessId = {pid}\" | "
+                    "Select-Object -ExpandProperty CommandLine"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.stdout.strip()
+
+    ps_cmd = shutil.which("ps")
+    if not ps_cmd:
+        return ""
+    result = subprocess.run(
+        [ps_cmd, "-o", "command=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip()
+
+
+def is_expected_mailsage_backend(pid: int) -> bool:
+    command_line = get_process_command_line(pid)
+    if not command_line:
+        return False
+
+    normalized = " ".join(command_line.lower().split())
+    if "uvicorn" not in normalized or "main:app" not in normalized:
+        return False
+    return "--port 8000" in normalized or "--port=8000" in normalized
+
+
 def health_status(timeout: float = 1.0) -> str | None:
     try:
         with urllib.request.urlopen(HEALTH_URL, timeout=timeout) as response:
@@ -145,7 +190,17 @@ def main() -> None:
 
     fallback_pid = pid_from_port()
     if fallback_pid is not None and health_status():
-        print("[MailSage] Found a running MailSage-compatible service on port 8000 without a PID file.")
+        print("[MailSage] Found a running service on port 8000 without a PID file.")
+        if not is_expected_mailsage_backend(fallback_pid):
+            print(
+                "[MailSage] Refusing to stop it because the process command line "
+                "does not match MailSage's expected backend signature."
+            )
+            print(
+                "[MailSage] If this is a manually started MailSage instance, "
+                "please stop that terminal or process yourself."
+            )
+            return
         if kill_by_pid(fallback_pid):
             remove_pid_file()
             print("[MailSage] MailSage stopped.")
