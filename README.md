@@ -31,6 +31,8 @@ Examples:
 - RTX 2060 6GB: `qwen3:4b-q4`
 - RTX 3090 24GB: `qwen3.5:27b-q4`
 
+
+According to others’ tests, Qwen3 and later models with a size of 4B or larger are capable of generating daily email summaries. However, I haven’t tested them myself. If you’d like, you can try smaller models to see whether they perform well and share your feedback with the community. That said, models larger than 4B seem to be a better overall choice.
 ## Installation
 
 Installation steps are documented in [install.md](install.md).
