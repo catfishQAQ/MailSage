@@ -26,5 +26,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# ── Logs ────────────────────────────────────
+# ── Logs & runtime files ───────────────────
 *.log
+*.pid

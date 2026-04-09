@@ -10,6 +10,17 @@
 
 ---
 
+## 启动模式
+
+MailSage 现在支持两种启动方式：
+
+- 开发模式：前后端分别启动，访问 `http://localhost:5173`
+- 一键启动模式：使用启动器统一启动，访问 `http://127.0.0.1:8000`
+
+如果你正在开发前端界面，建议继续使用开发模式；如果只是日常使用，建议使用一键启动模式。
+
+---
+
 ## 第一步：安装 Ollama 并下载模型
 
 ### 1.1 安装 Ollama
@@ -186,6 +197,45 @@ uvicorn main:app --reload --port 8000
 
 # 启动前端（在 frontend/ 目录）
 npm run dev
+
+# 在项目根目录执行一键启动
+python scripts/start_mailsage.py
+```
+
+## 一键启动
+
+在项目根目录执行：
+
+**Windows：**
+```bat
+MailSage.bat
+```
+
+**macOS / Linux：**
+```bash
+chmod +x start-mailsage.sh
+./start-mailsage.sh
+```
+
+启动器会自动完成以下操作：
+
+1. 在需要时构建前端
+2. 启动负责托管前端页面的后端
+3. 自动打开 `http://127.0.0.1:8000`
+
+如果你正在开发前端并需要热更新，还是继续使用 `npm run dev` 并访问 `http://localhost:5173`。
+
+如果之后想关闭一键启动模式拉起的后端：
+
+**Windows：**
+```bat
+Stop-MailSage.bat
+```
+
+**macOS / Linux：**
+```bash
+chmod +x stop-mailsage.sh
+./stop-mailsage.sh
 ```
 
 ---
@@ -204,6 +254,14 @@ npm run dev
 - 确认 `qwen3:4b` 已成功下载：`ollama list`
 - 查看后端终端输出的错误日志
 - 检查系统剩余内存/显存是否足够（qwen3:4b 约需 4GB 内存）
+
+**Q: 一键启动器跑起来了，但页面没有自动打开**
+- 手动访问 `http://127.0.0.1:8000`
+- 查看 `backend/mailsage-backend.log` 中的启动日志
+
+**Q: 8000 端口已被占用**
+- 先关闭占用 8000 端口的其他程序，再重新启动
+- 如果 MailSage 已经在运行，启动器会直接复用已有实例
 
 **Q: `pip install` 报错**
 - 确认 Python 版本 ≥ 3.11：`python --version`

@@ -10,6 +10,17 @@
 
 ---
 
+## Startup Modes
+
+MailSage now supports two startup modes:
+
+- Development mode: start the backend and frontend separately, then visit `http://localhost:5173`
+- One-click mode: use the launcher and visit `http://127.0.0.1:8000`
+
+Use development mode when you are actively changing the frontend. Use one-click mode for normal daily usage.
+
+---
+
 ## Step 1: Install Ollama and Download a Model
 
 ### 1.1 Install Ollama
@@ -183,6 +194,45 @@ uvicorn main:app --reload --port 8000
 
 # Start the frontend from frontend/
 npm run dev
+
+# One-click launch from the project root
+python scripts/start_mailsage.py
+```
+
+## One-Click Launch
+
+From the project root:
+
+**Windows**
+```bat
+MailSage.bat
+```
+
+**macOS / Linux**
+```bash
+chmod +x start-mailsage.sh
+./start-mailsage.sh
+```
+
+The launcher will:
+
+1. Build the frontend if needed
+2. Start the backend in frontend-serving mode
+3. Open `http://127.0.0.1:8000` automatically
+
+If you are developing UI changes and want hot reload, keep using `npm run dev` and open `http://localhost:5173` instead.
+
+To stop the one-click mode backend later:
+
+**Windows**
+```bat
+Stop-MailSage.bat
+```
+
+**macOS / Linux**
+```bash
+chmod +x stop-mailsage.sh
+./stop-mailsage.sh
 ```
 
 ---
@@ -202,6 +252,14 @@ npm run dev
 - Confirm that `qwen3:4b` has been downloaded with `ollama list`
 - Check the backend terminal logs for the actual error
 - Make sure your machine has enough available RAM / VRAM
+
+**Q: The one-click launcher starts but the page does not open**
+- Open `http://127.0.0.1:8000` manually in your browser
+- Check `backend/mailsage-backend.log` for startup errors
+
+**Q: Port 8000 is already in use**
+- Stop the other process using port 8000, then try again
+- If MailSage is already running, the launcher should reuse the existing instance
 
 **Q: `pip install` fails**
 - Check that your Python version is 3.11 or newer with `python --version`

@@ -1,7 +1,11 @@
 import logging
+import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,3 +63,37 @@ app.include_router(send.router, prefix="/api/emails", tags=["emails"])
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+def _frontend_dist_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "frontend" / "dist"
+
+
+def _serve_static_frontend() -> bool:
+    return os.getenv("MAILSAGE_SERVE_FRONTEND", "").lower() in {"1", "true", "yes"}
+
+
+if _serve_static_frontend():
+    frontend_dist = _frontend_dist_dir()
+    assets_dir = frontend_dist / "assets"
+
+    if frontend_dist.exists() and (frontend_dist / "index.html").exists():
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+
+        @app.get("/", include_in_schema=False)
+        async def spa_root():
+            return FileResponse(frontend_dist / "index.html")
+
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str):
+            requested_path = (frontend_dist / full_path).resolve()
+            if (
+                full_path
+                and requested_path.is_relative_to(frontend_dist)
+                and requested_path.exists()
+                and requested_path.is_file()
+            ):
+                return FileResponse(requested_path)
+            return FileResponse(frontend_dist / "index.html")
