@@ -34,3 +34,14 @@ Examples:
 ## Installation
 
 Installation steps are documented in [install.md](install.md).
+
+## One-Click Launch
+
+MailSage now supports a one-click launch flow for daily use.
+
+- Development mode: keep using the existing frontend and backend workflow at `http://localhost:5173`
+- One-click mode: double-click `MailSage.bat` on Windows or run `./start-mailsage.sh` on macOS / Linux, then open `http://127.0.0.1:8000`
+
+The one-click launcher builds the frontend when needed, starts the backend in frontend-serving mode, and opens the app in your browser automatically.
+
+To stop the one-click mode backend later, use `Stop-MailSage.bat` on Windows or `./stop-mailsage.sh` on macOS / Linux.
