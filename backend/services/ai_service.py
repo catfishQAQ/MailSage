@@ -1,12 +1,7 @@
 """
-Ollama AI 服务。
-模型：qwen3:4b
-策略：
-  - 批处理时强制 JSON 输出（format="json"）
-  - temperature=0 保证格式稳定
-  - 正文截断至 4800 字符（~1200 tokens），给 reasoning 留空间
-  - system prompt 精简，控制在 200 字以内
+Ollama-backed AI helpers for email analysis and reply expansion.
 """
+
 import json
 import logging
 from typing import Optional
@@ -18,50 +13,114 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen3:4b"
-BODY_MAX_CHARS = 4800  # 正文截断上限
+BODY_MAX_CHARS = 4800
 
-# 默认 prompt 模板（用户可在设置中自定义，{role}/{focus}/{tone} 为占位符）
-DEFAULT_ANALYSIS_PROMPT_PREFIX = (
-    "你是邮件助手。角色：{role}，关注：{focus}。语气：{tone}。"
-)
-# JSON 格式要求永远追加（不可由用户删除，防止解析崩溃）
-ANALYSIS_PROMPT_JSON_SUFFIX = (
-    "\n分析邮件后，仅输出以下格式的纯JSON（不加任何额外文字）：\n"
-    '{"importance_score":1-5,"is_important":true/false,"summary":"一句话核心摘要",'
-    '"action_items":["待办1","待办2"],"ghost_reply_suggestion":"一句话回复建议"}'
-)
-DEFAULT_REPLY_PROMPT = (
-    "你是专业邮件写作助手。你的身份：{role}。语气要求：{tone}。\n"
-    "请将用户提供的草稿扩写为一封结构完整、语气专业的回复邮件。\n"
-    "只输出邮件正文，不要包含主题行、称谓等格式提示语。"
-)
+SUPPORTED_LANGUAGES = {"zh-CN", "en-US"}
+DEFAULT_LANGUAGE = "en-US"
+DEFAULT_TONES = {
+    "zh-CN": "专业、客观、直接",
+    "en-US": "professional, objective, direct",
+}
+DEFAULT_ANALYSIS_PROMPT_PREFIXES = {
+    "zh-CN": "你是邮件助手。角色：{role}，关注：{focus}。语气：{tone}。",
+    "en-US": "You are an email assistant. Role: {role}. Focus: {focus}. Tone: {tone}.",
+}
+ANALYSIS_PROMPT_JSON_SUFFIXES = {
+    "zh-CN": (
+        "\n分析邮件后，仅输出以下格式的纯JSON（不加任何额外文字）：\n"
+        '{"importance_score":1-5,"is_important":true/false,"summary":"一句话核心摘要",'
+        '"action_items":["待办1","待办2"],"ghost_reply_suggestion":"一句话回复建议"}'
+    ),
+    "en-US": (
+        "\nAfter analyzing the email, output only pure JSON in this format "
+        "(no extra text):\n"
+        '{"importance_score":1-5,"is_important":true/false,"summary":"One-sentence summary",'
+        '"action_items":["Action item 1","Action item 2"],'
+        '"ghost_reply_suggestion":"One-sentence reply suggestion"}'
+    ),
+}
+DEFAULT_REPLY_PROMPTS = {
+    "zh-CN": (
+        "你是专业邮件写作助手。你的身份：{role}。语气要求：{tone}。\n"
+        "请将用户提供的草稿扩写为一封结构完整、语气专业的回复邮件。\n"
+        "只输出邮件正文，不要包含主题行、称谓等格式提示语。"
+    ),
+    "en-US": (
+        "You are a professional email writing assistant. Your role is {role}. "
+        "Required tone: {tone}.\n"
+        "Expand the user's draft into a complete, professional reply email.\n"
+        "Output only the email body. Do not include a subject line or formatting instructions."
+    ),
+}
+EMPTY_BODY_TEXT = {
+    "zh-CN": "（正文为空）",
+    "en-US": "(empty body)",
+}
+TRUNCATED_SUFFIX = {
+    "zh-CN": "\n...[正文已截断]",
+    "en-US": "\n...[body truncated]",
+}
+ANALYZE_USER_TEMPLATES = {
+    "zh-CN": "发件人：{sender}\n主题：{subject}\n正文：\n{body}",
+    "en-US": "Sender: {sender}\nSubject: {subject}\nBody:\n{body}",
+}
+EXPAND_USER_TEMPLATES = {
+    "zh-CN": "原邮件主题：{subject}\n原发件人：{sender}\n草稿：{draft}",
+    "en-US": "Original subject: {subject}\nOriginal sender: {sender}\nDraft: {draft}",
+}
 
 
 class EmailAIResult(BaseModel):
-    importance_score: int           # 1-5
+    importance_score: int
     is_important: bool
     summary: str
     action_items: list[str]
     ghost_reply_suggestion: str
 
 
-def _fill_prompt(template: str, role: str, focus: str, tone: str) -> str:
-    """将 {role}/{focus}/{tone} 占位符替换为实际值（用 replace 避免与 JSON 大括号冲突）"""
-    return (template
-            .replace("{role}", role or "")
-            .replace("{focus}", focus or "")
-            .replace("{tone}", tone or "专业、客观、直接"))
+def normalize_language(language: str | None) -> str:
+    return language if language in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
 
 
-def _build_system_prompt(role: str, focus: str, tone: str,
-                         custom_prefix: str | None = None) -> str:
-    prefix = custom_prefix if custom_prefix is not None else DEFAULT_ANALYSIS_PROMPT_PREFIX
-    return _fill_prompt(prefix, role, focus, tone) + ANALYSIS_PROMPT_JSON_SUFFIX
+def get_default_analysis_prompt_prefix(language: str) -> str:
+    return DEFAULT_ANALYSIS_PROMPT_PREFIXES[normalize_language(language)]
 
 
-def _truncate_body(body: str) -> str:
+def get_analysis_prompt_json_suffix(language: str) -> str:
+    return ANALYSIS_PROMPT_JSON_SUFFIXES[normalize_language(language)]
+
+
+def get_default_reply_prompt(language: str) -> str:
+    return DEFAULT_REPLY_PROMPTS[normalize_language(language)]
+
+
+def get_default_tone(language: str) -> str:
+    return DEFAULT_TONES[normalize_language(language)]
+
+
+def _fill_prompt(template: str, role: str, focus: str, tone: str, language: str) -> str:
+    return (
+        template.replace("{role}", role or "")
+        .replace("{focus}", focus or "")
+        .replace("{tone}", tone or get_default_tone(language))
+    )
+
+
+def _build_system_prompt(
+    role: str,
+    focus: str,
+    tone: str,
+    language: str,
+    custom_prefix: str | None = None,
+) -> str:
+    lang = normalize_language(language)
+    prefix = custom_prefix if custom_prefix is not None else get_default_analysis_prompt_prefix(lang)
+    return _fill_prompt(prefix, role, focus, tone, lang) + get_analysis_prompt_json_suffix(lang)
+
+
+def _truncate_body(body: str, language: str) -> str:
     if len(body) > BODY_MAX_CHARS:
-        return body[:BODY_MAX_CHARS] + "\n...[正文已截断]"
+        return body[:BODY_MAX_CHARS] + TRUNCATED_SUFFIX[normalize_language(language)]
     return body
 
 
@@ -71,19 +130,23 @@ async def analyze_email(
     body_text: str,
     role: str = "",
     focus: str = "",
-    tone: str = "专业、客观、直接",
+    tone: str = DEFAULT_TONES[DEFAULT_LANGUAGE],
     model: str = OLLAMA_MODEL,
     analysis_system_prompt: str | None = None,
+    language: str = DEFAULT_LANGUAGE,
 ) -> Optional[EmailAIResult]:
-    """
-    调用 Ollama 分析单封邮件。
-    返回 EmailAIResult，失败返回 None。
-    """
-    system_prompt = _build_system_prompt(role, focus, tone, custom_prefix=analysis_system_prompt)
-    user_content = (
-        f"发件人：{sender}\n"
-        f"主题：{subject}\n"
-        f"正文：\n{_truncate_body(body_text or '（正文为空）')}"
+    lang = normalize_language(language)
+    system_prompt = _build_system_prompt(
+        role,
+        focus,
+        tone,
+        lang,
+        custom_prefix=analysis_system_prompt,
+    )
+    user_content = ANALYZE_USER_TEMPLATES[lang].format(
+        sender=sender,
+        subject=subject,
+        body=_truncate_body(body_text or EMPTY_BODY_TEXT[lang], lang),
     )
 
     payload = {
@@ -103,41 +166,35 @@ async def analyze_email(
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"{OLLAMA_BASE_URL}/api/chat",
-                json=payload,
-            )
+            resp = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()
             content = data["message"]["content"]
 
-        # 解析 JSON
         try:
             parsed = EmailAIResult.model_validate_json(content)
-            # 保证 importance_score 在 1-5
             parsed.importance_score = max(1, min(5, parsed.importance_score))
             return parsed
-        except (ValidationError, json.JSONDecodeError) as e:
-            logger.warning("JSON 解析失败，尝试宽松解析: %s\n原始输出: %s", e, content[:200])
-            # 宽松兜底：尝试从 content 中提取 JSON 块
+        except (ValidationError, json.JSONDecodeError) as exc:
+            logger.warning("JSON parse failed, trying fallback: %s\nRaw output: %s", exc, content[:200])
             return _try_extract_json(content)
-
     except httpx.ConnectError:
-        logger.error("Ollama 服务未启动，无法连接 %s", OLLAMA_BASE_URL)
+        logger.error("Ollama is not reachable at %s", OLLAMA_BASE_URL)
         return None
-    except httpx.HTTPStatusError as e:
+    except httpx.HTTPStatusError as exc:
         logger.error(
-            "Ollama HTTP 错误 %s，模型='%s'，响应: %s",
-            e.response.status_code, model, e.response.text
+            "Ollama HTTP error %s for model '%s': %s",
+            exc.response.status_code,
+            model,
+            exc.response.text,
         )
         return None
-    except Exception as e:
-        logger.error("Ollama 调用异常（模型='%s'）: %s", model, e)
+    except Exception as exc:
+        logger.error("Ollama analysis failed for model '%s': %s", model, exc)
         return None
 
 
 def _try_extract_json(text: str) -> Optional[EmailAIResult]:
-    """尝试从文本中提取第一个 JSON 对象（应对模型输出带 markdown 的情况）"""
     start = text.find("{")
     end = text.rfind("}") + 1
     if start == -1 or end == 0:
@@ -154,20 +211,18 @@ async def expand_reply(
     original_sender: str,
     role: str = "",
     focus: str = "",
-    tone: str = "专业、客观、直接",
+    tone: str = DEFAULT_TONES[DEFAULT_LANGUAGE],
     model: str = OLLAMA_MODEL,
     reply_system_prompt: str | None = None,
+    language: str = DEFAULT_LANGUAGE,
 ) -> str:
-    """
-    将草稿/幽灵文本扩写为完整专业邮件。
-    返回扩写后的纯文本。
-    """
-    template = reply_system_prompt if reply_system_prompt is not None else DEFAULT_REPLY_PROMPT
-    system_prompt = _fill_prompt(template, role, focus, tone)
-    user_content = (
-        f"原邮件主题：{subject}\n"
-        f"原发件人：{original_sender}\n"
-        f"草稿：{draft}"
+    lang = normalize_language(language)
+    template = reply_system_prompt if reply_system_prompt is not None else get_default_reply_prompt(lang)
+    system_prompt = _fill_prompt(template, role, focus, tone, lang)
+    user_content = EXPAND_USER_TEMPLATES[lang].format(
+        subject=subject,
+        sender=original_sender,
+        draft=draft,
     )
 
     payload = {
@@ -189,25 +244,26 @@ async def expand_reply(
             resp = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
             resp.raise_for_status()
             return resp.json()["message"]["content"]
-    except httpx.HTTPStatusError as e:
+    except httpx.HTTPStatusError as exc:
         logger.error(
-            "扩写回复 HTTP 错误 %s，模型='%s'，响应: %s",
-            e.response.status_code, model, e.response.text
+            "Reply expansion HTTP error %s for model '%s': %s",
+            exc.response.status_code,
+            model,
+            exc.response.text,
         )
         raise
-    except Exception as e:
-        logger.error("扩写回复失败（模型='%s'）: %s", model, e)
+    except Exception as exc:
+        logger.error("Reply expansion failed for model '%s': %s", model, exc)
         raise
 
 
 async def check_ollama_status() -> dict:
-    """检查 Ollama 服务状态"""
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             resp.raise_for_status()
-            models = [m["name"] for m in resp.json().get("models", [])]
-            model_loaded = any(OLLAMA_MODEL in m for m in models)
+            models = [model["name"] for model in resp.json().get("models", [])]
+            model_loaded = any(OLLAMA_MODEL in model for model in models)
             return {
                 "running": True,
                 "model_available": model_loaded,

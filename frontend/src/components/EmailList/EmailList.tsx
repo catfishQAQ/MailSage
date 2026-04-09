@@ -1,9 +1,11 @@
 import { useEmailList } from '../../hooks/useEmails'
+import { useI18n } from '../../i18n'
 import { useUIStore } from '../../store/uiStore'
 import { EmailItem } from './EmailItem'
 
 export function EmailList() {
   const { selectedAccountId, selectedEmailId, filterImportant, setSelectedEmail } = useUIStore()
+  const { t } = useI18n()
 
   const { data, isLoading, error } = useEmailList({
     account_id: selectedAccountId ?? undefined,
@@ -11,19 +13,11 @@ export function EmailList() {
   })
 
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-        加载中…
-      </div>
-    )
+    return <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">{t('commonLoading')}</div>
   }
 
   if (error) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
-        加载失败
-      </div>
-    )
+    return <div className="flex-1 flex items-center justify-center text-red-400 text-sm">{t('commonLoadFailed')}</div>
   }
 
   const emails = data?.items ?? []
@@ -31,7 +25,7 @@ export function EmailList() {
   if (emails.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-        {filterImportant ? '没有重要邮件' : '收件箱为空'}
+        {filterImportant ? t('emailListEmptyImportant') : t('emailListEmpty')}
       </div>
     )
   }
@@ -39,7 +33,8 @@ export function EmailList() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-2 border-b border-gray-200 text-xs text-gray-500">
-        共 {data?.total ?? 0} 封{filterImportant ? ' · 仅重要' : ''}
+        {t('emailListTotal', { count: data?.total ?? 0 })}
+        {filterImportant ? t('emailListTotalImportantSuffix') : ''}
       </div>
       <div className="flex-1 overflow-y-auto">
         {emails.map((item) => (

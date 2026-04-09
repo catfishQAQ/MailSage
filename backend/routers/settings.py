@@ -37,6 +37,8 @@ async def update_persona(data: PersonaUpdate, session: AsyncSession = Depends(ge
         persona.tone = data.tone
     if data.ollama_model is not None:
         persona.ollama_model = data.ollama_model
+    if data.language is not None:
+        persona.language = data.language or "en-US"
     hours_changed = False
     if data.sync_interval_hours is not None:
         persona.sync_interval_hours = data.sync_interval_hours

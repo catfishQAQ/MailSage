@@ -40,6 +40,7 @@ class AccountOut(BaseModel):
 # ── Email ─────────────────────────────────────────────────
 class EmailListItem(BaseModel):
     id: str
+    message_id: Optional[str] = None
     account_id: str
     sender: str
     sender_name: Optional[str]
@@ -57,6 +58,7 @@ class EmailListItem(BaseModel):
 
 class EmailDetail(BaseModel):
     id: str
+    message_id: Optional[str] = None
     account_id: str
     sender: str
     sender_name: Optional[str]
@@ -107,6 +109,7 @@ class PersonaUpdate(BaseModel):
     tone: Optional[str] = None
     ollama_model: Optional[str] = None
     sync_interval_hours: Optional[int] = None
+    language: Optional[str] = None
     analysis_system_prompt: Optional[str] = None
     reply_system_prompt: Optional[str] = None
 
@@ -118,6 +121,7 @@ class PersonaOut(BaseModel):
     tone: Optional[str]
     ollama_model: Optional[str] = None
     sync_interval_hours: Optional[int] = None
+    language: Optional[str] = None
     analysis_system_prompt: Optional[str] = None
     reply_system_prompt: Optional[str] = None
 
