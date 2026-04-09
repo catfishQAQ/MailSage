@@ -14,6 +14,7 @@ class Base(DeclarativeBase):
 async def init_db():
     from sqlalchemy import text
     async with engine.begin() as conn:
+        await conn.execute(text("PRAGMA foreign_keys=ON"))
         await conn.run_sync(Base.metadata.create_all)
         # 迁移：为已有 DB 添加 ollama_model 列（新建 DB 时由 create_all 处理，已有 DB 执行此语句）
         try:
@@ -32,6 +33,26 @@ async def init_db():
             await conn.execute(text("ALTER TABLE user_persona ADD COLUMN reply_system_prompt TEXT"))
         except Exception:
             pass
+        try:
+            await conn.execute(text("ALTER TABLE user_persona ADD COLUMN language VARCHAR DEFAULT 'en-US'"))
+        except Exception:
+            pass
+        await conn.execute(
+            text(
+                "UPDATE user_persona SET language = 'en-US' "
+                "WHERE language IS NULL OR TRIM(language) = ''"
+            )
+        )
+        try:
+            await conn.execute(text("ALTER TABLE emails ADD COLUMN message_id VARCHAR"))
+        except Exception:
+            pass
+        await conn.execute(
+            text(
+                "UPDATE emails SET message_id = id "
+                "WHERE message_id IS NULL OR TRIM(message_id) = ''"
+            )
+        )
 
 
 async def get_session() -> AsyncSession:

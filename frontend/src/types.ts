@@ -14,6 +14,7 @@ export interface Account {
 
 export interface EmailListItem {
   id: string
+  message_id: string | null
   account_id: string
   sender: string
   sender_name: string | null
@@ -50,6 +51,7 @@ export interface Persona {
   tone: string | null
   ollama_model: string | null
   sync_interval_hours: number | null
+  language: 'zh-CN' | 'en-US' | null
   analysis_system_prompt: string | null
   reply_system_prompt: string | null
 }

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, desc
@@ -8,6 +9,7 @@ from database import get_session
 from models import Email, AIStatus
 from schemas import EmailDetail, EmailListItem, EmailListResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -51,6 +53,8 @@ async def get_email(email_id: str, session: AsyncSession = Depends(get_session))
     em = await session.get(Email, email_id)
     if not em:
         raise HTTPException(status_code=404, detail="邮件不存在")
+
+    logger.info("[get_email] id=%s is_read=%s uid=%s", email_id, em.is_read, em.uid)
 
     # 标记已读（本地 DB + IMAP 服务器）
     if not em.is_read:

@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { api } from '../../api'
+import { useI18n } from '../../i18n'
 import type { EmailDetail } from '../../types'
 
 type GhostState = 'ghost' | 'overridden' | 'expanded'
@@ -10,25 +11,21 @@ interface Props {
 }
 
 export function GhostReplyEditor({ email }: Props) {
-  const [state, setState] = useState<GhostState>(
-    email.ai_ghost_reply ? 'ghost' : 'overridden'
-  )
+  const [state, setState] = useState<GhostState>(email.ai_ghost_reply ? 'ghost' : 'overridden')
   const [userInput, setUserInput] = useState('')
   const [expandedText, setExpandedText] = useState('')
   const [sendSuccess, setSendSuccess] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const qc = useQueryClient()
+  const { t } = useI18n()
 
   const ghostText = email.ai_ghost_reply || ''
 
-  // AI 分析完成后自动切换到 ghost 状态（处理 AI 处理中打开邮件的情况）
   useEffect(() => {
     if (email.ai_ghost_reply && state === 'overridden' && !userInput) {
       setState('ghost')
     }
-  }, [email.ai_ghost_reply])
+  }, [email.ai_ghost_reply, state, userInput])
 
-  // AI 扩写
   const expand = useMutation({
     mutationFn: (draft: string) => api.ai.expandReply(email.id, draft),
     onSuccess: (data) => {
@@ -37,10 +34,8 @@ export function GhostReplyEditor({ email }: Props) {
     },
   })
 
-  // 发信
   const send = useMutation({
     mutationFn: async (body: string) => {
-      // 目前通过 SMTP 服务发信（需传入 account_id、收件人等信息）
       const res = await fetch('/api/emails/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,10 +44,10 @@ export function GhostReplyEditor({ email }: Props) {
           to: email.sender,
           subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
           body,
-          reply_to_message_id: email.id,
+          reply_to_message_id: email.message_id || email.id,
         }),
       })
-      if (!res.ok) throw new Error('发送失败')
+      if (!res.ok) throw new Error('send_failed')
       return res.json()
     },
     onSuccess: () => {
@@ -63,10 +58,13 @@ export function GhostReplyEditor({ email }: Props) {
     },
   })
 
-  const handleUserType = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setUserInput(e.target.value)
-    if (state === 'ghost') setState('overridden')
-  }, [state])
+  const handleUserType = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setUserInput(e.target.value)
+      if (state === 'ghost') setState('overridden')
+    },
+    [state],
+  )
 
   const handleExpand = () => {
     const draft = state === 'ghost' ? ghostText : userInput
@@ -75,17 +73,16 @@ export function GhostReplyEditor({ email }: Props) {
   }
 
   const handleSend = () => {
-    const body = state === 'expanded' ? expandedText : (state === 'ghost' ? ghostText : userInput)
+    const body = state === 'expanded' ? expandedText : state === 'ghost' ? ghostText : userInput
     if (!body.trim()) return
     send.mutate(body)
   }
 
   return (
     <div className="p-3 space-y-2">
-      <div className="text-xs text-gray-400 font-medium">回复</div>
+      <div className="text-xs text-gray-400 font-medium">{t('replyTitle')}</div>
 
       {state === 'expanded' ? (
-        /* 扩写后展示完整邮件 */
         <textarea
           value={expandedText}
           onChange={(e) => setExpandedText(e.target.value)}
@@ -93,7 +90,6 @@ export function GhostReplyEditor({ email }: Props) {
           className="w-full text-sm text-gray-800 border border-gray-200 rounded p-2.5 resize-none focus:outline-none focus:border-blue-400"
         />
       ) : (
-        /* Ghost text / 用户输入 */
         <textarea
           ref={textareaRef}
           value={state === 'ghost' ? '' : userInput}
@@ -104,7 +100,7 @@ export function GhostReplyEditor({ email }: Props) {
               textareaRef.current?.focus()
             }
           }}
-          placeholder={state === 'ghost' ? ghostText : '输入回复草稿…'}
+          placeholder={state === 'ghost' ? ghostText : t('replyPlaceholder')}
           rows={4}
           className={`w-full text-sm border border-gray-200 rounded p-2.5 resize-none focus:outline-none focus:border-blue-400 ${
             state === 'ghost' ? 'ghost-text text-gray-400' : 'text-gray-800'
@@ -119,7 +115,7 @@ export function GhostReplyEditor({ email }: Props) {
             disabled={expand.isPending || (state === 'overridden' && !userInput.trim())}
             className="text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded px-3 py-1.5 transition-colors"
           >
-            {expand.isPending ? '润色中…' : '✨ AI 润色 / 扩写'}
+            {expand.isPending ? t('replyPolishing') : t('replyPolish')}
           </button>
         )}
         {state === 'expanded' && (
@@ -127,7 +123,7 @@ export function GhostReplyEditor({ email }: Props) {
             onClick={() => setState('overridden')}
             className="text-xs text-gray-500 hover:text-gray-700 underline"
           >
-            重新编辑
+            {t('replyEditAgain')}
           </button>
         )}
         <button
@@ -135,19 +131,13 @@ export function GhostReplyEditor({ email }: Props) {
           disabled={send.isPending}
           className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded px-3 py-1.5 transition-colors ml-auto"
         >
-          {send.isPending ? '发送中…' : '发送'}
+          {send.isPending ? t('replySending') : t('replySend')}
         </button>
       </div>
 
-      {sendSuccess && (
-        <div className="text-xs text-green-600">✓ 已发送</div>
-      )}
-      {expand.error && (
-        <div className="text-xs text-red-500">扩写失败，请检查 Ollama 是否运行</div>
-      )}
-      {send.error && (
-        <div className="text-xs text-red-500">发送失败，请检查账号配置</div>
-      )}
+      {sendSuccess && <div className="text-xs text-green-600">{t('replySent')}</div>}
+      {expand.error && <div className="text-xs text-red-500">{t('replyExpandFailed')}</div>}
+      {send.error && <div className="text-xs text-red-500">{t('replySendFailed')}</div>}
     </div>
   )
 }

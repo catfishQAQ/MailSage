@@ -1,12 +1,15 @@
+import asyncio
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_session
-from models import Account
-from schemas import AccountCreate, AccountUpdate, AccountOut
 from crypto import encrypt
+from database import get_session
+from models import Account, Email
+from schemas import AccountCreate, AccountOut, AccountUpdate
+from services.imap_service import sync_account
 
 router = APIRouter()
 
@@ -19,7 +22,6 @@ async def list_accounts(session: AsyncSession = Depends(get_session)):
 
 @router.post("/", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
 async def create_account(data: AccountCreate, session: AsyncSession = Depends(get_session)):
-    # 检查邮箱是否已添加
     existing = await session.execute(select(Account).where(Account.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="该邮箱已添加")
@@ -77,18 +79,19 @@ async def delete_account(account_id: str, session: AsyncSession = Depends(get_se
     account = await session.get(Account, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
+
+    # Explicitly delete child emails so current SQLite deployments behave the same
+    # even before foreign-key cascade settings are fully enforced.
+    await session.execute(delete(Email).where(Email.account_id == account_id))
     await session.delete(account)
     await session.commit()
 
 
 @router.post("/{account_id}/sync", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_sync(account_id: str, session: AsyncSession = Depends(get_session)):
-    """手动触发指定账号的 IMAP 增量同步"""
     account = await session.get(Account, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
 
-    from services.imap_service import sync_account
-    import asyncio
     asyncio.create_task(sync_account(account_id))
     return {"message": f"已触发 {account.email} 同步任务"}

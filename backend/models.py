@@ -30,14 +30,24 @@ class Account(Base):
     last_uid: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    emails: Mapped[list["Email"]] = relationship("Email", back_populates="account")
+    emails: Mapped[list["Email"]] = relationship(
+        "Email",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Email(Base):
     __tablename__ = "emails"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)  # Message-ID
-    account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id"), nullable=False)
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # internal UUID
+    message_id: Mapped[str] = mapped_column(String, nullable=True)  # RFC Message-ID
+    account_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     uid: Mapped[int] = mapped_column(Integer, nullable=True)   # IMAP UID
     sender: Mapped[str] = mapped_column(String, nullable=False)
     sender_name: Mapped[str] = mapped_column(String, nullable=True)
@@ -70,5 +80,6 @@ class UserPersona(Base):
     tone: Mapped[str] = mapped_column(String, nullable=True, default="专业、客观、直接")
     ollama_model: Mapped[str] = mapped_column(String, nullable=True, default=None)
     sync_interval_hours: Mapped[int] = mapped_column(Integer, nullable=True, default=2)
+    language: Mapped[str] = mapped_column(String, nullable=True, default="en-US")
     analysis_system_prompt: Mapped[str] = mapped_column(Text, nullable=True, default=None)
     reply_system_prompt: Mapped[str] = mapped_column(Text, nullable=True, default=None)

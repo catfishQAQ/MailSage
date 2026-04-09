@@ -1,4 +1,5 @@
-"""SMTP 发信服务"""
+"""SMTP sending service."""
+
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -23,14 +24,16 @@ async def send_email(
         account = await session.get(Account, account_id)
         if not account:
             raise ValueError(f"账号 {account_id} 不存在")
+
         password = decrypt(account.encrypted_password)
         from_addr = account.email
+        display_name = account.display_name
         smtp_host = account.smtp_host
         smtp_port = account.smtp_port
         use_ssl = account.smtp_use_ssl
 
     msg = MIMEMultipart("alternative")
-    msg["From"] = f"{account.display_name or from_addr} <{from_addr}>"
+    msg["From"] = f"{display_name or from_addr} <{from_addr}>"
     msg["To"] = to
     msg["Subject"] = subject
     if reply_to_message_id:
@@ -50,6 +53,6 @@ async def send_email(
         )
         logger.info("邮件已发送至 %s，主题：%s", to, subject)
         return True
-    except Exception as e:
-        logger.error("发信失败: %s", e)
+    except Exception as exc:
+        logger.error("发信失败: %s", exc)
         raise

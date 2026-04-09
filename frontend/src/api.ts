@@ -18,6 +18,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const text = await res.text()
     throw new Error(`API ${url} failed (${res.status}): ${text}`)
   }
+  if (res.status === 204) {
+    return undefined as T
+  }
   return res.json()
 }
 
