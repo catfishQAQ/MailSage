@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+Summarize your emails with local AI, without sending inbox data to the cloud.
+
 MailSage is a privacy-first local email assistant for people who want faster inbox triage without sending mail content to a cloud LLM.
 
 It connects multiple mailboxes, syncs messages into one place, and uses [Ollama](https://ollama.com/) to run a local model that summarizes emails and helps draft replies on your own machine.
@@ -20,35 +22,15 @@ It connects multiple mailboxes, syncs messages into one place, and uses [Ollama]
 - Local AI analysis and reply assistance powered by Ollama
 - Bilingual interface support: English and Simplified Chinese
 
+## Local Model Suggestions
+
+Please choose and download different Ollama models based on your own machine's VRAM and system memory so the app can run smoothly on your hardware.
+
+Examples:
+
+- RTX 2060 6GB: `qwen3:4b-q4`
+- RTX 3090 24GB: `qwen3.5:27b-q4`
+
 ## Installation
 
 Installation steps are documented in [install.md](install.md).
-
-## Language Switch on GitHub
-
-GitHub only renders one repository homepage README automatically: `README.md`.
-
-To provide multiple languages:
-
-1. Keep `README.md` as the main landing page.
-2. Create a second file such as `README.zh-CN.md`.
-3. Add language links at the top of both files.
-
-Example:
-
-```md
-[English](README.md) | [简体中文](README.zh-CN.md)
-```
-
-In the Chinese file:
-
-```md
-[English](README.md) | [简体中文](README.zh-CN.md)
-```
-
-When visitors click the language link on GitHub, it opens the corresponding README file in the repo.
-
-## Notes
-
-- MailSage is designed for local processing with Ollama so your email content does not need to be sent to a hosted LLM for summarization.
-- If you add POP support later, you can update the README wording from "currently based on IMAP sync" to "supports IMAP and POP".
