@@ -2,11 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Summarize your emails with local AI, without sending inbox data to the cloud.
+This started as a spontaneous side project with no fancy tech stack or groundbreaking ideas. If your daily emails don't contain anything particularly sensitive, an agent tool like OpenClaw or Claude Code is probably a more convenient way to get email summaries. But if you'd rather keep certain emails off the cloud — and you have a decent PC — this project is for you.
 
-MailSage is a privacy-first local email assistant for people who want faster inbox triage without sending mail content to a cloud LLM.
-
-It connects multiple mailboxes, syncs messages into one place, and uses [Ollama](https://ollama.com/) to run a local model that summarizes emails and helps draft replies on your own machine.
+MailSage is a privacy-first local email assistant. It uses a locally running LLM (via [Ollama](https://ollama.com/)) to summarize emails and assess their importance, supports multiple mailboxes in a single app, and keeps the entire AI pipeline on your own machine without sending any mail content to the cloud.
 
 ## Why MailSage
 
@@ -21,6 +19,15 @@ It connects multiple mailboxes, syncs messages into one place, and uses [Ollama]
 - Multi-account email access, currently based on IMAP sync
 - Local AI analysis and reply assistance powered by Ollama
 - Bilingual interface support: English and Simplified Chinese
+
+## TODO
+
+- ✅ Overall architecture
+- ✅ Email receiving and sync (original mailbox ↔ MailSage)
+- ✅ Settings UI and prompt customization
+- ✅ One-click launch
+- ⬜ Reply sending & AI polish feature testing
+- ⬜ ……
 
 ## Local Model Suggestions
 
@@ -47,3 +54,7 @@ MailSage now supports a one-click launch flow for daily use.
 The one-click launcher builds the frontend when needed, starts the backend in frontend-serving mode, and opens the app in your browser automatically.
 
 To stop the one-click mode backend later, use `Stop-MailSage.bat` on Windows or `./stop-mailsage.sh` on macOS / Linux.
+
+## ⚠️ Security Notice
+
+This project has had a number of bugs fixed, but serious issues may still exist — including potential injection vulnerabilities. Please make sure to run it in a safe and trusted environment, and use it with caution.

@@ -63,7 +63,6 @@ const dictionaries = {
       'AI 分析失败。请在左侧 AI 控制台确认 Ollama 已运行并选择正确模型，然后点击“↺ 重新分析”重试。',
     summaryTitle: 'AI 摘要',
     summaryImportance: '重要性 {score}/5',
-    summaryActionItems: '待办事项',
     replyTitle: '回复',
     replyPlaceholder: '输入回复草稿…',
     replyPolish: '✨ AI 润色 / 扩写',
@@ -125,7 +124,7 @@ const dictionaries = {
     promptAnalysisPrefix: '你是邮件助手。角色：{role}，关注：{focus}。语气：{tone}。',
     promptReply: '你是专业邮件写作助手。你的身份：{role}。语气要求：{tone}。\n请将用户提供的草稿扩写为一封结构完整、语气专业的回复邮件。\n只输出邮件正文，不要包含主题行、称谓等格式提示语。',
     promptAnalysisJsonSuffix:
-      '分析邮件后，仅输出以下格式的纯JSON（不加任何额外文字）：\n{"importance_score":1-5,"is_important":true/false,"summary":"一句话核心摘要","action_items":["待办1","待办2"],"ghost_reply_suggestion":"一句话回复建议"}',
+      '分析邮件后，仅输出以下格式的纯JSON（不加任何额外文字）：\n{"importance_score":1-5,"is_important":true/false,"summary":"一句话核心摘要","ghost_reply_suggestion":"一句话回复建议"}',
   },
   'en-US': {
     appName: 'MailSage',
@@ -184,7 +183,6 @@ const dictionaries = {
       'AI analysis failed. Check the AI Console to make sure Ollama is running and the correct model is selected, then try “↺ Reanalyze” again.',
     summaryTitle: 'AI Summary',
     summaryImportance: 'Importance {score}/5',
-    summaryActionItems: 'Action items',
     replyTitle: 'Reply',
     replyPlaceholder: 'Write a reply draft…',
     replyPolish: '✨ Polish / expand with AI',
@@ -246,7 +244,7 @@ const dictionaries = {
     promptAnalysisPrefix: 'You are an email assistant. Role: {role}. Focus: {focus}. Tone: {tone}.',
     promptReply: 'You are a professional email writing assistant. Your role is {role}. Required tone: {tone}.\nExpand the user draft into a complete, professional reply email.\nOutput only the email body. Do not include a subject line or formatting instructions.',
     promptAnalysisJsonSuffix:
-      'After analyzing the email, output only pure JSON in this format (no extra text):\n{"importance_score":1-5,"is_important":true/false,"summary":"One-sentence summary","action_items":["Action item 1","Action item 2"],"ghost_reply_suggestion":"One-sentence reply suggestion"}',
+      'After analyzing the email, output only pure JSON in this format (no extra text):\n{"importance_score":1-5,"is_important":true/false,"summary":"One-sentence summary","ghost_reply_suggestion":"One-sentence reply suggestion"}',
   },
 } as const
 

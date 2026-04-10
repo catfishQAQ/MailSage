@@ -74,7 +74,6 @@ class EmailDetail(BaseModel):
     ai_importance: Optional[int]
     ai_is_important: Optional[bool]
     ai_summary: Optional[str]
-    ai_action_items: Optional[str]
     ai_ghost_reply: Optional[str]
 
     model_config = {"from_attributes": True}

@@ -33,7 +33,6 @@ export interface EmailDetail extends EmailListItem {
   body_text: string | null
   body_html: string | null
   folder: string
-  ai_action_items: string | null  // JSON array 字符串
   ai_ghost_reply: string | null
 }
 

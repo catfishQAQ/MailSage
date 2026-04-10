@@ -197,7 +197,6 @@ class AIQueue:
                 em.ai_importance = result.importance_score
                 em.ai_is_important = result.is_important
                 em.ai_summary = result.summary
-                em.ai_action_items = json.dumps(result.action_items, ensure_ascii=False)
                 em.ai_ghost_reply = result.ghost_reply_suggestion
             else:
                 em.ai_status = AIStatus.failed

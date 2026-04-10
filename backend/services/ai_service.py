@@ -29,13 +29,12 @@ ANALYSIS_PROMPT_JSON_SUFFIXES = {
     "zh-CN": (
         "\n分析邮件后，仅输出以下格式的纯JSON（不加任何额外文字）：\n"
         '{"importance_score":1-5,"is_important":true/false,"summary":"一句话核心摘要",'
-        '"action_items":["待办1","待办2"],"ghost_reply_suggestion":"一句话回复建议"}'
+        '"ghost_reply_suggestion":"一句话回复建议"}'
     ),
     "en-US": (
         "\nAfter analyzing the email, output only pure JSON in this format "
         "(no extra text):\n"
         '{"importance_score":1-5,"is_important":true/false,"summary":"One-sentence summary",'
-        '"action_items":["Action item 1","Action item 2"],'
         '"ghost_reply_suggestion":"One-sentence reply suggestion"}'
     ),
 }
@@ -74,7 +73,6 @@ class EmailAIResult(BaseModel):
     importance_score: int
     is_important: bool
     summary: str
-    action_items: list[str]
     ghost_reply_suggestion: str
 
 

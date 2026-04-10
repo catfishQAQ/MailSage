@@ -40,14 +40,6 @@ export function EmailDetail() {
 
   if (!email) return null
 
-  const actionItems: string[] = (() => {
-    try {
-      return JSON.parse(email.ai_action_items || '[]')
-    } catch {
-      return []
-    }
-  })()
-
   const isAnalyzing = triggerOne.isPending || email.ai_status === 'processing'
 
   return (
@@ -92,7 +84,7 @@ export function EmailDetail() {
 
       {email.ai_status === 'completed' && email.ai_summary && (
         <div className="shrink-0">
-          <SummaryCard summary={email.ai_summary} actionItems={actionItems} importance={email.ai_importance} />
+          <SummaryCard summary={email.ai_summary} importance={email.ai_importance} />
         </div>
       )}
 

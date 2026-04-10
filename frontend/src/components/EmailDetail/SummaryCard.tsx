@@ -2,11 +2,10 @@ import { useI18n } from '../../i18n'
 
 interface Props {
   summary: string
-  actionItems: string[]
   importance: number | null
 }
 
-export function SummaryCard({ summary, actionItems, importance }: Props) {
+export function SummaryCard({ summary, importance }: Props) {
   const { t } = useI18n()
 
   return (
@@ -28,19 +27,6 @@ export function SummaryCard({ summary, actionItems, importance }: Props) {
         )}
       </div>
       <p className="text-gray-700 leading-relaxed">{summary}</p>
-      {actionItems.length > 0 && (
-        <div className="mt-2">
-          <div className="text-xs text-blue-500 font-medium mb-1">{t('summaryActionItems')}</div>
-          <ul className="space-y-0.5">
-            {actionItems.map((item, index) => (
-              <li key={index} className="flex items-start gap-1.5 text-xs text-gray-600">
-                <span className="text-blue-400 mt-0.5 shrink-0">•</span>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   )
 }
