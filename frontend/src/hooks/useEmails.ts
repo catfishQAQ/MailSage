@@ -44,11 +44,15 @@ export function useSyncAccount() {
     mutationFn: (id: string) => api.accounts.sync(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['email'] })
       qc.invalidateQueries({ queryKey: ['pending-count'] })
       // IMAP 同步是后台任务（202），延迟多次重拉以覆盖同步窗口期
       setTimeout(() => qc.invalidateQueries({ queryKey: ['emails'] }), 3000)
       setTimeout(() => qc.invalidateQueries({ queryKey: ['emails'] }), 7000)
       setTimeout(() => qc.invalidateQueries({ queryKey: ['emails'] }), 12000)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['email'] }), 3000)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['email'] }), 7000)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['email'] }), 12000)
     },
   })
 }

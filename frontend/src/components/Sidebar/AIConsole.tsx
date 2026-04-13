@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useI18n } from '../../i18n'
 import { useOllamaStatus, usePendingCount, usePersona, useTriggerAI } from '../../hooks/useEmails'
 
@@ -34,6 +35,12 @@ export function AIConsole() {
 
   const selectedModel = persona?.ollama_model || ''
   const modelOK = selectedModel !== '' && models.includes(selectedModel)
+
+  useEffect(() => {
+    if (trigger.data && !processing && pending === 0) {
+      trigger.reset()
+    }
+  }, [processing, pending, trigger])
 
   const statusText = !running
     ? t('aiConsoleOllamaStopped')

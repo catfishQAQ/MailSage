@@ -53,6 +53,20 @@ async def init_db():
                 "WHERE message_id IS NULL OR TRIM(message_id) = ''"
             )
         )
+        try:
+            await conn.execute(text("ALTER TABLE accounts ADD COLUMN sent_last_uid INTEGER DEFAULT 0"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE accounts ADD COLUMN sent_folder VARCHAR"))
+        except Exception:
+            pass
+        await conn.execute(
+            text(
+                "UPDATE accounts SET sent_last_uid = 0 "
+                "WHERE sent_last_uid IS NULL"
+            )
+        )
 
 
 async def get_session() -> AsyncSession:

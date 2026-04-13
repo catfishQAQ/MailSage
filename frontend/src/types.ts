@@ -34,6 +34,7 @@ export interface EmailDetail extends EmailListItem {
   body_html: string | null
   folder: string
   ai_ghost_reply: string | null
+  sent_replies: SentReply[]
 }
 
 export interface EmailListResponse {
@@ -41,6 +42,15 @@ export interface EmailListResponse {
   total: number
   page: number
   page_size: number
+}
+
+export interface SentReply {
+  id: string
+  message_id: string
+  recipient: string
+  subject: string | null
+  body_text: string
+  sent_at: string
 }
 
 export interface Persona {

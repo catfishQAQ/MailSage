@@ -58,6 +58,8 @@ const dictionaries = {
     emailDetailReanalyzeTitle: '重新分析',
     emailDetailSender: '发件人：',
     emailDetailTime: '时间：',
+    emailDetailSentRepliesTitle: '本邮箱回信',
+    emailDetailSentTo: '发送至：',
     emailDetailAiProcessing: 'AI 正在分析中…',
     emailDetailAiFailed:
       'AI 分析失败。请在左侧 AI 控制台确认 Ollama 已运行并选择正确模型，然后点击“↺ 重新分析”重试。',
@@ -178,6 +180,8 @@ const dictionaries = {
     emailDetailReanalyzeTitle: 'Reanalyze',
     emailDetailSender: 'From: ',
     emailDetailTime: 'Time: ',
+    emailDetailSentRepliesTitle: 'Replies from this mailbox',
+    emailDetailSentTo: 'To:',
     emailDetailAiProcessing: 'AI is analyzing this email…',
     emailDetailAiFailed:
       'AI analysis failed. Check the AI Console to make sure Ollama is running and the correct model is selected, then try “↺ Reanalyze” again.',

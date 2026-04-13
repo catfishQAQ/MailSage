@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from models import AIStatus
 
 
@@ -75,6 +75,7 @@ class EmailDetail(BaseModel):
     ai_is_important: Optional[bool]
     ai_summary: Optional[str]
     ai_ghost_reply: Optional[str]
+    sent_replies: list["SentReplyOut"] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -99,6 +100,22 @@ class AIExpandRequest(BaseModel):
 
 class AIExpandResponse(BaseModel):
     expanded: str
+
+
+class SentReplyOut(BaseModel):
+    id: str
+    message_id: str
+    recipient: str
+    subject: Optional[str]
+    body_text: str
+    sent_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SendResponse(BaseModel):
+    ok: bool
+    sent_reply: SentReplyOut
 
 
 # ── Persona ───────────────────────────────────────────────
@@ -135,3 +152,6 @@ class AIStatusEvent(BaseModel):
     ai_is_important: Optional[bool] = None
     ai_summary: Optional[str] = None
     ai_ghost_reply: Optional[str] = None
+
+
+EmailDetail.model_rebuild()

@@ -26,7 +26,8 @@ MailSage is a privacy-first local email assistant. It uses a locally running LLM
 - ✅ Email receiving and sync (original mailbox ↔ MailSage)
 - ✅ Settings UI and prompt customization
 - ✅ One-click launch
-- ⬜ Reply sending & AI polish feature testing
+- ✅ Reply sending & AI polish feature testing
+- ⬜ Improve mailbox logic and UI, such as adding a Sent mailbox
 - ⬜ ……
 
 ## Local Model Suggestions

@@ -6,8 +6,8 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_session
-from models import Email, AIStatus
-from schemas import EmailDetail, EmailListItem, EmailListResponse
+from models import Email, AIStatus, SentReply
+from schemas import EmailDetail, EmailListItem, EmailListResponse, SentReplyOut
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -66,7 +66,38 @@ async def get_email(email_id: str, session: AsyncSession = Depends(get_session))
         from services.imap_service import mark_as_read
         asyncio.create_task(mark_as_read(account_id, uid or 0))
 
-    return em
+    sent_replies_result = await session.execute(
+        select(SentReply)
+        .where(SentReply.source_email_id == em.id)
+        .order_by(SentReply.sent_at.asc())
+    )
+    sent_replies = sent_replies_result.scalars().all()
+
+    detail_payload = {
+        "id": em.id,
+        "message_id": em.message_id,
+        "account_id": em.account_id,
+        "sender": em.sender,
+        "sender_name": em.sender_name,
+        "recipients": em.recipients,
+        "subject": em.subject,
+        "body_text": em.body_text,
+        "body_html": em.body_html,
+        "receive_time": em.receive_time,
+        "is_read": em.is_read,
+        "has_attachments": em.has_attachments,
+        "folder": em.folder,
+        "ai_status": em.ai_status,
+        "ai_importance": em.ai_importance,
+        "ai_is_important": em.ai_is_important,
+        "ai_summary": em.ai_summary,
+        "ai_ghost_reply": em.ai_ghost_reply,
+        "sent_replies": [
+            SentReplyOut.model_validate(sent_reply)
+            for sent_reply in sent_replies
+        ],
+    }
+    return EmailDetail(**detail_payload)
 
 
 @router.get("/pending/count")

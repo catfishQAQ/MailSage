@@ -110,6 +110,35 @@ export function EmailDetail() {
             {email.body_text || t('commonNoneBody')}
           </pre>
         )}
+
+        {email.sent_replies.length > 0 && (
+          <div className="mt-5 space-y-3">
+            <div className="text-xs font-semibold tracking-wide text-sky-700 uppercase">
+              {t('emailDetailSentRepliesTitle')}
+            </div>
+            {email.sent_replies.map((reply) => (
+              <div
+                key={reply.id}
+                className="rounded-xl border border-sky-100 bg-sky-50/70 px-4 py-3 shadow-sm shadow-sky-100/40"
+              >
+                <div className="flex items-start justify-between gap-3 text-xs">
+                  <div className="min-w-0">
+                    {reply.subject && (
+                      <div className="truncate font-medium text-sky-900">{reply.subject}</div>
+                    )}
+                    <div className="text-sky-700/80">
+                      {t('emailDetailSentTo')} {reply.recipient}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-sky-700/80">{formatDate(reply.sent_at)}</div>
+                </div>
+                <pre className="mt-3 whitespace-pre-wrap text-sm font-sans leading-relaxed text-slate-700">
+                  {reply.body_text}
+                </pre>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="shrink-0 border-t border-gray-100">

@@ -2,6 +2,7 @@ import type {
   Account,
   EmailListResponse,
   EmailDetail,
+  SentReply,
   Persona,
   OllamaStatus,
   AIStatus,
@@ -62,6 +63,24 @@ export const api = {
       return request<EmailListResponse>(`/emails/?${q}`)
     },
     get: (id: string) => request<EmailDetail>(`/emails/${id}`),
+    send: (data: {
+      account_id: string
+      to: string
+      subject: string
+      body: string
+      reply_to_message_id?: string | null
+    }) =>
+      fetch(BASE + '/emails/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({} as { detail?: string }))
+          throw new Error(payload.detail || 'send_failed')
+        }
+        return res.json() as Promise<{ ok: true; sent_reply: SentReply }>
+      }),
     pendingCount: () => request<{ pending: number }>('/emails/pending/count'),
   },
 

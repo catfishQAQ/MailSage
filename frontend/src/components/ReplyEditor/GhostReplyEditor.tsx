@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api'
 import { useI18n } from '../../i18n'
 import type { EmailDetail } from '../../types'
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function GhostReplyEditor({ email }: Props) {
+  const qc = useQueryClient()
   const [state, setState] = useState<GhostState>(email.ai_ghost_reply ? 'ghost' : 'overridden')
   const [userInput, setUserInput] = useState('')
   const [expandedText, setExpandedText] = useState('')
@@ -35,22 +36,16 @@ export function GhostReplyEditor({ email }: Props) {
   })
 
   const send = useMutation({
-    mutationFn: async (body: string) => {
-      const res = await fetch('/api/emails/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    mutationFn: (body: string) =>
+      api.emails.send({
           account_id: email.account_id,
           to: email.sender,
           subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
           body,
           reply_to_message_id: email.message_id || email.id,
-        }),
-      })
-      if (!res.ok) throw new Error('send_failed')
-      return res.json()
-    },
+      }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['email', email.id] })
       setSendSuccess(true)
       setState('ghost')
       setUserInput('')
@@ -137,7 +132,11 @@ export function GhostReplyEditor({ email }: Props) {
 
       {sendSuccess && <div className="text-xs text-green-600">{t('replySent')}</div>}
       {expand.error && <div className="text-xs text-red-500">{t('replyExpandFailed')}</div>}
-      {send.error && <div className="text-xs text-red-500">{t('replySendFailed')}</div>}
+      {send.error && (
+        <div className="text-xs text-red-500">
+          {t('replySendFailed')}: {(send.error as Error).message}
+        </div>
+      )}
     </div>
   )
 }

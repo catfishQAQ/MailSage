@@ -26,7 +26,7 @@ from sqlalchemy import select
 
 from crypto import decrypt
 from database import AsyncSessionLocal
-from models import AIStatus, Account, Email
+from models import AIStatus, Account, Email, SentReply
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,14 @@ _CSS_SANITIZER = CSSSanitizer(
         "line-height",
     ]
 )
+_COMMON_SENT_FOLDERS = {
+    "sent",
+    "sent items",
+    "sent messages",
+    "sent mail",
+    "[gmail]/sent mail",
+    "inbox.sent",
+}
 
 
 def _decode_str(s: str | bytes | None) -> str:
@@ -210,6 +218,55 @@ def _send_imap_id(imap: imaplib.IMAP4_SSL):
                 break
     except Exception:
         pass
+
+
+def _select_mailbox(imap: imaplib.IMAP4_SSL, mailbox: str):
+    if mailbox.upper() == "INBOX":
+        return imap.select("INBOX")
+    escaped = mailbox.replace("\\", "\\\\").replace('"', '\\"')
+    return imap.select(f'"{escaped}"')
+
+
+def _parse_list_mailbox(item: bytes | str) -> tuple[set[str], str] | None:
+    raw = item.decode(errors="replace") if isinstance(item, bytes) else item
+    match = re.match(r'\((?P<flags>[^)]*)\)\s+"[^"]*"\s+(?P<mailbox>.+)$', raw.strip())
+    if not match:
+        return None
+
+    mailbox = match.group("mailbox").strip()
+    if mailbox.startswith('"') and mailbox.endswith('"'):
+        mailbox = mailbox[1:-1].replace(r"\\", "\\").replace(r"\"", '"')
+
+    flags = {flag.lower() for flag in match.group("flags").split() if flag}
+    return flags, mailbox
+
+
+def _find_sent_mailbox(imap: imaplib.IMAP4_SSL) -> str | None:
+    typ, data = imap.list()
+    if typ != "OK" or not data:
+        return None
+
+    fallback: str | None = None
+    for item in data:
+        parsed = _parse_list_mailbox(item)
+        if not parsed:
+            continue
+        flags, mailbox = parsed
+        if "\\sent" in flags:
+            return mailbox
+        if mailbox.strip().strip('"').lower() in _COMMON_SENT_FOLDERS and fallback is None:
+            fallback = mailbox
+    return fallback
+
+
+def _extract_reference_ids(msg: email_lib.message.Message) -> list[str]:
+    candidates: list[str] = []
+    for header_name in ("In-Reply-To", "References"):
+        raw = msg.get(header_name, "") or ""
+        for message_id in re.findall(r"<[^>]+>", raw):
+            if message_id not in candidates:
+                candidates.append(message_id)
+    return candidates
 
 
 def _do_sync_blocking(account_data: dict, password: str) -> tuple[list[dict], int]:
@@ -323,6 +380,106 @@ def _do_sync_blocking(account_data: dict, password: str) -> tuple[list[dict], in
     return parsed_emails, max_uid
 
 
+def _fetch_sent_messages_blocking(
+    account_data: dict,
+    password: str,
+) -> tuple[list[dict], int, str | None]:
+    imap = imaplib.IMAP4_SSL(account_data["imap_host"], account_data["imap_port"])
+    imap.login(account_data["email"], password)
+    _send_imap_id(imap)
+
+    sent_mailbox = account_data.get("sent_folder")
+    if sent_mailbox:
+        typ, _ = _select_mailbox(imap, sent_mailbox)
+        if typ != "OK":
+            sent_mailbox = None
+
+    if not sent_mailbox:
+        sent_mailbox = _find_sent_mailbox(imap)
+        if not sent_mailbox:
+            imap.logout()
+            return [], account_data.get("sent_last_uid", 0), None
+        typ, _ = _select_mailbox(imap, sent_mailbox)
+        if typ != "OK":
+            imap.logout()
+            return [], account_data.get("sent_last_uid", 0), None
+
+    last_uid: int = account_data.get("sent_last_uid", 0)
+    if last_uid == 0:
+        typ, data = imap.uid("search", None, "ALL")
+        all_uids = data[0].decode().split() if data and data[0] else []
+        uids_to_fetch = all_uids[-200:] if len(all_uids) > 200 else all_uids
+    else:
+        typ, data = imap.uid("search", None, f"UID {last_uid + 1}:*")
+        uids_to_fetch = data[0].decode().split() if data and data[0] else []
+
+    if not uids_to_fetch:
+        imap.logout()
+        return [], last_uid, sent_mailbox
+
+    uid_set = ",".join(uids_to_fetch)
+    _, fetch_data = imap.uid("fetch", uid_set, "(BODY.PEEK[])")
+
+    parsed_sent: list[dict] = []
+    max_uid = last_uid
+
+    for idx, item in enumerate(fetch_data):
+        if not isinstance(item, tuple):
+            continue
+        try:
+            header_line = item[0].decode(errors="replace")
+            raw = item[1]
+            if not isinstance(raw, bytes):
+                continue
+
+            msg = email_lib.message_from_bytes(raw)
+
+            trailing = ""
+            if idx + 1 < len(fetch_data) and isinstance(fetch_data[idx + 1], bytes):
+                trailing = fetch_data[idx + 1].decode(errors="replace")
+            uid_line = header_line + trailing
+
+            uid_match = re.search(r"UID\s+(\d+)", uid_line, re.IGNORECASE)
+            uid_val = int(uid_match.group(1)) if uid_match else 0
+
+            message_id = msg.get("Message-ID", "").strip() or str(uuid.uuid4())
+            recipient_raw = _decode_str(msg.get("To", ""))
+            _, recipient_addr = email_lib.utils.parseaddr(recipient_raw)
+            recipient = recipient_addr or recipient_raw
+            subject = _decode_str(msg.get("Subject", "(无主题)"))
+            body_text, _ = _extract_body(msg)
+
+            date_str = msg.get("Date", "")
+            try:
+                sent_time = parsedate_to_datetime(date_str)
+                if sent_time.tzinfo is None:
+                    sent_time = sent_time.replace(tzinfo=timezone.utc)
+                sent_time = sent_time.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                sent_time = datetime.utcnow()
+
+            parsed_sent.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "message_id": message_id,
+                    "in_reply_to": msg.get("In-Reply-To", "").strip() or None,
+                    "references": msg.get("References", "").strip() or None,
+                    "candidate_source_message_ids": _extract_reference_ids(msg),
+                    "recipient": recipient,
+                    "subject": subject,
+                    "body_text": body_text,
+                    "sent_at": sent_time,
+                }
+            )
+            max_uid = max(max_uid, uid_val)
+        except Exception as exc:
+            logger.warning("解析已发送邮件失败: %s", exc)
+            continue
+
+    imap.logout()
+    return parsed_sent, max_uid, sent_mailbox
+
+
 def _fetch_flags_blocking(account_data: dict, password: str, uids: list[int]) -> dict[int, bool]:
     if not uids:
         return {}
@@ -389,6 +546,104 @@ async def mark_as_read(account_id: str, uid: int):
         logger.warning("IMAP 标记已读失败 uid=%d: %s", uid, exc)
 
 
+async def _merge_sent_replies(
+    account_id: str,
+    parsed_sent_messages: list[dict],
+    sent_last_uid: int,
+    sent_folder: str | None,
+) -> int:
+    async with AsyncSessionLocal() as session:
+        account = await session.get(Account, account_id)
+        if not account:
+            return 0
+
+        if sent_folder:
+            account.sent_folder = sent_folder
+        if sent_last_uid > (account.sent_last_uid or 0):
+            account.sent_last_uid = sent_last_uid
+
+        if not parsed_sent_messages:
+            await session.commit()
+            return 0
+
+        message_ids = [item["message_id"] for item in parsed_sent_messages if item.get("message_id")]
+        existing_result = await session.execute(
+            select(SentReply.message_id).where(
+                SentReply.account_id == account_id,
+                SentReply.message_id.in_(message_ids),
+            )
+        )
+        existing_message_ids = set(existing_result.scalars().all())
+
+        candidate_source_ids = {
+            candidate
+            for item in parsed_sent_messages
+            for candidate in item.get("candidate_source_message_ids", [])
+        }
+        source_emails_by_message_id: dict[str, Email] = {}
+        if candidate_source_ids:
+            source_result = await session.execute(
+                select(Email).where(
+                    Email.account_id == account_id,
+                    Email.message_id.in_(candidate_source_ids),
+                )
+            )
+            source_emails_by_message_id = {
+                email.message_id: email
+                for email in source_result.scalars().all()
+                if email.message_id
+            }
+
+        inserted = 0
+        for item in parsed_sent_messages:
+            if item["message_id"] in existing_message_ids:
+                continue
+
+            source_email = None
+            for candidate in item.get("candidate_source_message_ids", []):
+                source_email = source_emails_by_message_id.get(candidate)
+                if source_email is not None:
+                    break
+
+            if source_email is None:
+                continue
+
+            session.add(
+                SentReply(
+                    id=item["id"],
+                    source_email_id=source_email.id,
+                    account_id=account_id,
+                    message_id=item["message_id"],
+                    in_reply_to=item.get("in_reply_to"),
+                    references=item.get("references"),
+                    recipient=item["recipient"],
+                    subject=item["subject"],
+                    body_text=item["body_text"],
+                    sent_at=item["sent_at"],
+                )
+            )
+            inserted += 1
+
+        await session.commit()
+        return inserted
+
+
+async def _sync_sent_replies(account_data: dict, password: str) -> int:
+    loop = asyncio.get_running_loop()
+    parsed_sent_messages, sent_last_uid, sent_folder = await loop.run_in_executor(
+        None,
+        _fetch_sent_messages_blocking,
+        account_data,
+        password,
+    )
+    return await _merge_sent_replies(
+        account_id=account_data["id"],
+        parsed_sent_messages=parsed_sent_messages,
+        sent_last_uid=sent_last_uid,
+        sent_folder=sent_folder,
+    )
+
+
 async def sync_account(account_id: str) -> int:
     async with AsyncSessionLocal() as session:
         account = await session.get(Account, account_id)
@@ -402,11 +657,19 @@ async def sync_account(account_id: str) -> int:
             "imap_host": account.imap_host,
             "imap_port": account.imap_port,
             "last_uid": account.last_uid,
+            "sent_last_uid": account.sent_last_uid,
+            "sent_folder": account.sent_folder,
         }
 
     try:
         new_count = await _do_sync(account_data, password)
-        logger.info("账号 %s 同步完成，新增 %d 封", account_data["email"], new_count)
+        sent_count = await _sync_sent_replies(account_data, password)
+        logger.info(
+            "账号 %s 同步完成，收件新增 %d 封，回信导入 %d 封",
+            account_data["email"],
+            new_count,
+            sent_count,
+        )
         return new_count
     except Exception as exc:
         logger.error("账号 %s 同步失败: %s", account_data["email"], exc)
