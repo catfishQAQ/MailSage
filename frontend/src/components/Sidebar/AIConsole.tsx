@@ -24,12 +24,14 @@ function StatusDot({
 export function AIConsole() {
   const { data: status } = useOllamaStatus()
   const selectedAccountId = useUIStore((s) => s.selectedAccountId)
-  const { data: pendingData } = usePendingCount(selectedAccountId)
+  const { data: accountPendingData } = usePendingCount(selectedAccountId)
+  const { data: globalPendingData } = usePendingCount()
   const { data: persona } = usePersona()
   const trigger = useTriggerAI()
   const { t } = useI18n()
 
-  const pending = pendingData?.pending ?? 0
+  const accountPending = accountPendingData?.pending ?? 0
+  const globalPending = globalPendingData?.pending ?? 0
   const running = status?.running ?? false
   const processing = status?.is_processing ?? false
   const queueSize = status?.queue_size ?? 0
@@ -39,10 +41,10 @@ export function AIConsole() {
   const modelOK = selectedModel !== '' && models.includes(selectedModel)
 
   useEffect(() => {
-    if (trigger.data && !processing && pending === 0) {
+    if (trigger.data && !processing && globalPending === 0) {
       trigger.reset()
     }
-  }, [processing, pending, trigger])
+  }, [processing, globalPending, trigger])
 
   const statusText = !running
     ? t('aiConsoleOllamaStopped')
@@ -74,8 +76,10 @@ export function AIConsole() {
         </span>
       </div>
 
-      {pending > 0 && (
-        <div className="text-xs text-gray-500">{t('aiConsolePending', { count: pending })}</div>
+      {globalPending > 0 && (
+        <div className="text-xs text-gray-500">
+          {t('aiConsolePendingInline', { account: accountPending, global: globalPending })}
+        </div>
       )}
       <button
         onClick={() => trigger.mutate()}

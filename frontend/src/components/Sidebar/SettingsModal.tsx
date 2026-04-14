@@ -29,6 +29,16 @@ function joinPromptSections(...parts: Array<string | null | undefined>) {
   return parts.map((part) => (part || '').trim()).filter(Boolean).join('\n\n')
 }
 
+function splitPromptHeadTail(prompt: string) {
+  const lines = prompt
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  if (lines.length === 0) return { head: '', tail: '' }
+  if (lines.length === 1) return { head: lines[0], tail: '' }
+  return { head: lines[0], tail: lines.slice(1).join('\n') }
+}
+
 export function SettingsModal({ onClose }: Props) {
   const { data: persona } = usePersona()
   const { data: status } = useOllamaStatus()
@@ -112,14 +122,18 @@ export function SettingsModal({ onClose }: Props) {
     [accountPromptContext, analysisPrompt, focus, promptTemplates, role, tone],
   )
 
+  const filledReplyPrompt = fillPrompt(promptTemplates.replyPrompt, role, focus, tone)
+  const { head: replyPromptHead, tail: replyPromptTail } = splitPromptHeadTail(filledReplyPrompt)
+
   const replyPromptPreview = useMemo(
     () =>
       joinPromptSections(
-        fillPrompt(promptTemplates.replyPrompt, role, focus, tone),
+        replyPromptHead,
         replyPrompt,
         accountPromptContext,
+        replyPromptTail,
       ),
-    [accountPromptContext, focus, promptTemplates, replyPrompt, role, tone],
+    [accountPromptContext, replyPrompt, replyPromptHead, replyPromptTail],
   )
 
   const save = useMutation({

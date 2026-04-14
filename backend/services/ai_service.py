@@ -110,6 +110,15 @@ def _join_prompt_sections(*parts: str | None) -> str:
     return "\n\n".join(part.strip() for part in parts if part and part.strip())
 
 
+def _split_prompt_head_tail(prompt: str) -> tuple[str, str]:
+    lines = [line.strip() for line in prompt.splitlines() if line.strip()]
+    if not lines:
+        return "", ""
+    if len(lines) == 1:
+        return lines[0], ""
+    return lines[0], "\n".join(lines[1:])
+
+
 def build_analysis_system_prompt(
     role: str,
     focus: str,
@@ -137,8 +146,14 @@ def build_reply_system_prompt(
     account_prompt_context: str | None = None,
 ) -> str:
     lang = normalize_language(language)
-    prefix = _fill_prompt(get_default_reply_prompt(lang), role, focus, tone, lang)
-    return _join_prompt_sections(prefix, reply_system_prompt, account_prompt_context)
+    filled_prompt = _fill_prompt(get_default_reply_prompt(lang), role, focus, tone, lang)
+    reply_head, reply_tail = _split_prompt_head_tail(filled_prompt)
+    return _join_prompt_sections(
+        reply_head,
+        reply_system_prompt,
+        account_prompt_context,
+        reply_tail,
+    )
 
 
 def _truncate_body(body: str, language: str) -> str:
