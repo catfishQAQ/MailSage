@@ -10,7 +10,7 @@ import subprocess
 from sqlalchemy import select
 
 from database import AsyncSessionLocal
-from models import AIStatus, Email, UserPersona
+from models import AIStatus, Account, Email, UserPersona
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +172,8 @@ class AIQueue:
             subject = em.subject or ""
             sender = em.sender or ""
             body_text = em.body_text or ""
+            account = await session.get(Account, em.account_id)
+            account_prompt_context = account.prompt_context if account else None
 
         _broadcast({"email_id": email_id, "ai_status": "processing"})
 
@@ -184,6 +186,7 @@ class AIQueue:
             tone=tone,
             model=model,
             analysis_system_prompt=analysis_system_prompt,
+            account_prompt_context=account_prompt_context,
             language=language,
         )
 

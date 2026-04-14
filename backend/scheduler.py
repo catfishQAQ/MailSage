@@ -1,4 +1,5 @@
-"""APScheduler 定时任务：定期同步所有邮箱 + 触发 AI 处理，频率可在设置中配置"""
+"""APScheduler periodic sync jobs."""
+
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -8,19 +9,23 @@ logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 
 
-async def _scheduled_job():
+async def run_sync_cycle(trigger: str = "scheduled") -> None:
+    """Run one full sync cycle and enqueue pending emails for AI."""
     from services.imap_service import sync_all_accounts
     from services.queue_service import ai_queue
 
-    logger.info("定时任务：开始同步邮件")
+    logger.info("Sync cycle started (trigger=%s)", trigger)
     await sync_all_accounts()
+    queued = await ai_queue.enqueue_pending()
+    logger.info("Sync cycle completed (trigger=%s), queued=%d", trigger, queued)
 
-    count = await ai_queue.enqueue_pending()
-    logger.info("定时任务：已将 %d 封邮件加入 AI 队列", count)
+
+async def _scheduled_job() -> None:
+    await run_sync_cycle(trigger="scheduled")
 
 
-async def start_scheduler():
-    """启动调度器，同步频率从 DB 读取（默认 2 小时）"""
+async def start_scheduler() -> None:
+    """Start scheduler with sync interval loaded from user settings."""
     from database import AsyncSessionLocal
     from models import UserPersona
     from sqlalchemy import select
@@ -41,14 +46,14 @@ async def start_scheduler():
             id="email_sync",
             replace_existing=True,
         )
-        logger.info("定时任务调度器已启动（每 %d 小时）", hours)
+        logger.info("Scheduled sync enabled (every %d hours)", hours)
     else:
-        logger.info("定时任务调度器已启动（手动模式，不自动同步）")
+        logger.info("Scheduled sync disabled (manual mode)")
     _scheduler.start()
 
 
-def reschedule_sync(hours: int):
-    """用新的间隔时间重新调度同步任务；hours=0 表示手动模式，移除定时任务"""
+def reschedule_sync(hours: int) -> None:
+    """Reschedule sync interval; hours=0 means manual mode."""
     global _scheduler
     if not _scheduler or not _scheduler.running:
         return
@@ -58,24 +63,25 @@ def reschedule_sync(hours: int):
                 _scheduler.remove_job("email_sync")
             except Exception:
                 pass
-            logger.info("定时同步已关闭（手动模式）")
-        else:
-            try:
-                _scheduler.reschedule_job("email_sync", trigger=IntervalTrigger(hours=hours))
-            except Exception:
-                # 任务不存在（之前是手动模式），重新添加
-                _scheduler.add_job(
-                    _scheduled_job,
-                    trigger=IntervalTrigger(hours=hours),
-                    id="email_sync",
-                    replace_existing=True,
-                )
-            logger.info("定时同步已更新为每 %d 小时", hours)
+            logger.info("Scheduled sync disabled (manual mode)")
+            return
+
+        try:
+            _scheduler.reschedule_job("email_sync", trigger=IntervalTrigger(hours=hours))
+        except Exception:
+            _scheduler.add_job(
+                _scheduled_job,
+                trigger=IntervalTrigger(hours=hours),
+                id="email_sync",
+                replace_existing=True,
+            )
+        logger.info("Scheduled sync interval updated to %d hours", hours)
     except Exception as exc:
-        logger.warning("reschedule_sync 失败（已忽略）: %s", exc)
+        logger.warning("reschedule_sync failed (ignored): %s", exc)
 
 
-def stop_scheduler():
+def stop_scheduler() -> None:
     global _scheduler
     if _scheduler and _scheduler.running:
         _scheduler.shutdown(wait=False)
+

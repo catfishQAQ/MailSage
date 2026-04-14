@@ -1,10 +1,13 @@
 import type {
   Account,
-  EmailListResponse,
-  EmailDetail,
-  Persona,
-  OllamaStatus,
   AIStatus,
+  EmailDetail,
+  EmailListResponse,
+  MailboxView,
+  OllamaStatus,
+  Persona,
+  SentReply,
+  SentReplyListResponse,
 } from './types'
 
 const BASE = '/api'
@@ -24,7 +27,6 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
-// ── Accounts ──────────────────────────────────────────────
 export const api = {
   accounts: {
     list: () => request<Account[]>('/accounts/'),
@@ -39,7 +41,7 @@ export const api = {
       smtp_use_ssl?: boolean
       password: string
     }) => request<Account>('/accounts/', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { password?: string; display_name?: string }) =>
+    update: (id: string, data: { password?: string; display_name?: string; prompt_context?: string | null }) =>
       request<Account>(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/accounts/${id}`, { method: 'DELETE' }),
     sync: (id: string) => request<{ message: string }>(`/accounts/${id}/sync`, { method: 'POST' }),
@@ -49,20 +51,55 @@ export const api = {
     list: (params: {
       account_id?: string
       ai_status?: AIStatus
-      is_important?: boolean
+      view?: Exclude<MailboxView, 'sent'>
       page?: number
       page_size?: number
     }) => {
       const q = new URLSearchParams()
       if (params.account_id) q.set('account_id', params.account_id)
       if (params.ai_status) q.set('ai_status', params.ai_status)
-      if (params.is_important != null) q.set('is_important', String(params.is_important))
+      if (params.view) q.set('view', params.view)
       if (params.page) q.set('page', String(params.page))
       if (params.page_size) q.set('page_size', String(params.page_size))
       return request<EmailListResponse>(`/emails/?${q}`)
     },
     get: (id: string) => request<EmailDetail>(`/emails/${id}`),
-    pendingCount: () => request<{ pending: number }>('/emails/pending/count'),
+    listSent: (params: { account_id?: string; page?: number; page_size?: number }) => {
+      const q = new URLSearchParams()
+      if (params.account_id) q.set('account_id', params.account_id)
+      if (params.page) q.set('page', String(params.page))
+      if (params.page_size) q.set('page_size', String(params.page_size))
+      return request<SentReplyListResponse>(`/emails/sent?${q}`)
+    },
+    getSent: (id: string) => request<SentReply>(`/emails/sent/${id}`),
+    markAllRead: (account_id: string) =>
+      request<{ updated_count: number }>('/emails/mark-read-all', {
+        method: 'POST',
+        body: JSON.stringify({ account_id }),
+      }),
+    send: (data: {
+      account_id: string
+      to: string
+      subject: string
+      body: string
+      reply_to_message_id?: string | null
+    }) =>
+      fetch(BASE + '/emails/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({} as { detail?: string }))
+          throw new Error(payload.detail || 'send_failed')
+        }
+        return res.json() as Promise<{ ok: true; sent_reply: SentReply }>
+      }),
+    pendingCount: (account_id?: string) => {
+      const q = new URLSearchParams()
+      if (account_id) q.set('account_id', account_id)
+      return request<{ pending: number }>(`/emails/pending/count${q.size ? `?${q}` : ''}`)
+    },
   },
 
   ai: {

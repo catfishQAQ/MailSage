@@ -26,14 +26,16 @@ async def lifespan(app: FastAPI):
     worker_task = asyncio.create_task(ai_queue.start_worker())
 
     # 启动 APScheduler 定时任务（从 DB 读取用户配置的同步频率）
-    from scheduler import start_scheduler, stop_scheduler
+    from scheduler import run_sync_cycle, start_scheduler, stop_scheduler
     await start_scheduler()
+    startup_sync_task = asyncio.create_task(run_sync_cycle(trigger="startup"))
 
     yield
 
     # 关闭时：广播关闭哨兵（让所有 SSE 连接立即退出），再停止 worker 和 scheduler
     from services.queue_service import broadcast_shutdown
     broadcast_shutdown()
+    startup_sync_task.cancel()
     worker_task.cancel()
     stop_scheduler()
 

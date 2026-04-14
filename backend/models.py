@@ -1,6 +1,15 @@
 import enum
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, Boolean, DateTime, Enum as SAEnum, ForeignKey
+from sqlalchemy import (
+    String,
+    Text,
+    Integer,
+    Boolean,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
@@ -24,14 +33,35 @@ class Account(Base):
     smtp_host: Mapped[str] = mapped_column(String, nullable=False)
     smtp_port: Mapped[int] = mapped_column(Integer, default=465)
     smtp_use_ssl: Mapped[bool] = mapped_column(Boolean, default=True)
+    prompt_context: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # 加密后的密码（Fernet）
     encrypted_password: Mapped[str] = mapped_column(Text, nullable=False)
     # 增量同步：记录上次同步的最大 UID
     last_uid: Mapped[int] = mapped_column(Integer, default=0)
+    sent_last_uid: Mapped[int] = mapped_column(Integer, default=0)
+    sent_folder: Mapped[str] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     emails: Mapped[list["Email"]] = relationship(
         "Email",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    sent_replies: Mapped[list["SentReply"]] = relationship(
+        "SentReply",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    folder_states: Mapped[list["AccountFolderState"]] = relationship(
+        "AccountFolderState",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    email_folder_copies: Mapped[list["EmailFolderCopy"]] = relationship(
+        "EmailFolderCopy",
         back_populates="account",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -69,6 +99,98 @@ class Email(Base):
     ai_ghost_reply: Mapped[str] = mapped_column(Text, nullable=True)
 
     account: Mapped["Account"] = relationship("Account", back_populates="emails")
+    sent_replies: Mapped[list["SentReply"]] = relationship(
+        "SentReply",
+        back_populates="source_email",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    folder_copies: Mapped[list["EmailFolderCopy"]] = relationship(
+        "EmailFolderCopy",
+        back_populates="email",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class AccountFolderState(Base):
+    __tablename__ = "account_folder_states"
+    __table_args__ = (
+        UniqueConstraint("account_id", "mailbox", name="uq_account_folder_state"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mailbox: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="custom")
+    include_in_sync: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_uid: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped["Account"] = relationship("Account", back_populates="folder_states")
+
+
+class EmailFolderCopy(Base):
+    __tablename__ = "email_folder_copies"
+    __table_args__ = (
+        UniqueConstraint("account_id", "mailbox", "uid", name="uq_email_folder_copy_uid"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    email_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("emails.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    account_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mailbox: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="custom")
+    uid: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    email: Mapped["Email"] = relationship("Email", back_populates="folder_copies")
+    account: Mapped["Account"] = relationship("Account", back_populates="email_folder_copies")
+
+
+class SentReply(Base):
+    __tablename__ = "sent_replies"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    source_email_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("emails.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    account_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    message_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    in_reply_to: Mapped[str] = mapped_column(String, nullable=True)
+    references: Mapped[str] = mapped_column(Text, nullable=True)
+    recipient: Mapped[str] = mapped_column(String, nullable=False)
+    subject: Mapped[str] = mapped_column(String, nullable=True, default="(No subject)")
+    body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False, default="local")
+
+    source_email: Mapped["Email"] = relationship("Email", back_populates="sent_replies")
+    account: Mapped["Account"] = relationship("Account", back_populates="sent_replies")
 
 
 class UserPersona(Base):

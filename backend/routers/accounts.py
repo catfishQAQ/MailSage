@@ -68,6 +68,8 @@ async def update_account(
         account.encrypted_password = encrypt(data.password)
     if data.is_active is not None:
         account.is_active = data.is_active
+    if data.prompt_context is not None:
+        account.prompt_context = data.prompt_context or None
 
     await session.commit()
     await session.refresh(account)

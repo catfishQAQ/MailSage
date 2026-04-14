@@ -27,11 +27,13 @@ DEFAULT_ANALYSIS_PROMPT_PREFIXES = {
 }
 ANALYSIS_PROMPT_JSON_SUFFIXES = {
     "zh-CN": (
-        "\n分析邮件后，仅输出以下格式的纯JSON（不加任何额外文字）：\n"
+        "\n请只使用中文输出分析结果。\n"
+        "分析邮件后，仅输出以下格式的纯JSON（不加任何额外文字）：\n"
         '{"importance_score":1-5,"is_important":true/false,"summary":"一句话核心摘要",'
         '"ghost_reply_suggestion":"一句话回复建议"}'
     ),
     "en-US": (
+        "\nUse English only for the analysis output.\n"
         "\nAfter analyzing the email, output only pure JSON in this format "
         "(no extra text):\n"
         '{"importance_score":1-5,"is_important":true/false,"summary":"One-sentence summary",'
@@ -42,13 +44,13 @@ DEFAULT_REPLY_PROMPTS = {
     "zh-CN": (
         "你是专业邮件写作助手。你的身份：{role}。语气要求：{tone}。\n"
         "请将用户提供的草稿扩写为一封结构完整、语气专业的回复邮件。\n"
-        "只输出邮件正文，不要包含主题行、称谓等格式提示语。"
+        "只输出中文邮件正文，不要包含主题行、称谓等格式提示语。"
     ),
     "en-US": (
         "You are a professional email writing assistant. Your role is {role}. "
         "Required tone: {tone}.\n"
         "Expand the user's draft into a complete, professional reply email.\n"
-        "Output only the email body. Do not include a subject line or formatting instructions."
+        "Output only the email body in English. Do not include a subject line or formatting instructions."
     ),
 }
 EMPTY_BODY_TEXT = {
@@ -104,16 +106,54 @@ def _fill_prompt(template: str, role: str, focus: str, tone: str, language: str)
     )
 
 
-def _build_system_prompt(
+def _join_prompt_sections(*parts: str | None) -> str:
+    return "\n\n".join(part.strip() for part in parts if part and part.strip())
+
+
+def _split_prompt_head_tail(prompt: str) -> tuple[str, str]:
+    lines = [line.strip() for line in prompt.splitlines() if line.strip()]
+    if not lines:
+        return "", ""
+    if len(lines) == 1:
+        return lines[0], ""
+    return lines[0], "\n".join(lines[1:])
+
+
+def build_analysis_system_prompt(
     role: str,
     focus: str,
     tone: str,
     language: str,
-    custom_prefix: str | None = None,
+    analysis_system_prompt: str | None = None,
+    account_prompt_context: str | None = None,
 ) -> str:
     lang = normalize_language(language)
-    prefix = custom_prefix if custom_prefix is not None else get_default_analysis_prompt_prefix(lang)
-    return _fill_prompt(prefix, role, focus, tone, lang) + get_analysis_prompt_json_suffix(lang)
+    prefix = _fill_prompt(get_default_analysis_prompt_prefix(lang), role, focus, tone, lang)
+    return _join_prompt_sections(
+        prefix,
+        analysis_system_prompt,
+        account_prompt_context,
+        get_analysis_prompt_json_suffix(lang),
+    )
+
+
+def build_reply_system_prompt(
+    role: str,
+    focus: str,
+    tone: str,
+    language: str,
+    reply_system_prompt: str | None = None,
+    account_prompt_context: str | None = None,
+) -> str:
+    lang = normalize_language(language)
+    filled_prompt = _fill_prompt(get_default_reply_prompt(lang), role, focus, tone, lang)
+    reply_head, reply_tail = _split_prompt_head_tail(filled_prompt)
+    return _join_prompt_sections(
+        reply_head,
+        reply_system_prompt,
+        account_prompt_context,
+        reply_tail,
+    )
 
 
 def _truncate_body(body: str, language: str) -> str:
@@ -131,15 +171,17 @@ async def analyze_email(
     tone: str = DEFAULT_TONES[DEFAULT_LANGUAGE],
     model: str = OLLAMA_MODEL,
     analysis_system_prompt: str | None = None,
+    account_prompt_context: str | None = None,
     language: str = DEFAULT_LANGUAGE,
 ) -> Optional[EmailAIResult]:
     lang = normalize_language(language)
-    system_prompt = _build_system_prompt(
+    system_prompt = build_analysis_system_prompt(
         role,
         focus,
         tone,
         lang,
-        custom_prefix=analysis_system_prompt,
+        analysis_system_prompt=analysis_system_prompt,
+        account_prompt_context=account_prompt_context,
     )
     user_content = ANALYZE_USER_TEMPLATES[lang].format(
         sender=sender,
@@ -212,11 +254,18 @@ async def expand_reply(
     tone: str = DEFAULT_TONES[DEFAULT_LANGUAGE],
     model: str = OLLAMA_MODEL,
     reply_system_prompt: str | None = None,
+    account_prompt_context: str | None = None,
     language: str = DEFAULT_LANGUAGE,
 ) -> str:
     lang = normalize_language(language)
-    template = reply_system_prompt if reply_system_prompt is not None else get_default_reply_prompt(lang)
-    system_prompt = _fill_prompt(template, role, focus, tone, lang)
+    system_prompt = build_reply_system_prompt(
+        role,
+        focus,
+        tone,
+        lang,
+        reply_system_prompt=reply_system_prompt,
+        account_prompt_context=account_prompt_context,
+    )
     user_content = EXPAND_USER_TEMPLATES[lang].format(
         subject=subject,
         sender=original_sender,

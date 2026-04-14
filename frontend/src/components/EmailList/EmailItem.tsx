@@ -16,6 +16,13 @@ interface Props {
   onClick: () => void
 }
 
+function folderBadgeLabel(folder: string): string {
+  const normalized = folder.trim()
+  if (!normalized) return 'Inbox'
+  const parts = normalized.split(/[/.\\]/).filter(Boolean)
+  return parts.length > 0 ? parts[parts.length - 1] : normalized
+}
+
 export function EmailItem({ item, isSelected, onClick }: Props) {
   const aiUpdates = useUIStore((s) => s.aiUpdates)
   const { language, t } = useI18n()
@@ -67,6 +74,15 @@ export function EmailItem({ item, isSelected, onClick }: Props) {
 
       <div className={`text-xs truncate ${!merged.is_read ? 'font-medium text-gray-800' : 'text-gray-600'}`}>
         {merged.subject}
+      </div>
+
+      <div className="mt-1">
+        <span
+          className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700"
+          title={`${t('emailListFolderTitle')}: ${merged.folder}`}
+        >
+          {folderBadgeLabel(merged.folder)}
+        </span>
       </div>
 
       {merged.ai_summary && (

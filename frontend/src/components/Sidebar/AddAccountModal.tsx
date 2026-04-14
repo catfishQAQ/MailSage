@@ -169,6 +169,7 @@ export function AddAccountModal({ onClose }: Props) {
             placeholder={t('addAccountPasswordPlaceholder')}
             className={inputCls}
           />
+          <p className="text-xs text-amber-600/90 mt-1 leading-relaxed">{t('addAccountImapNotice')}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">

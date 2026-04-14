@@ -1,6 +1,10 @@
 # ── Sensitive config & data (never upload) ──
+.env
+.env.*
 backend/.env
-backend/*.db
+*.db
+*.sqlite
+*.sqlite3
 
 # ── Python cache & virtual environments ─────
 __pycache__/
