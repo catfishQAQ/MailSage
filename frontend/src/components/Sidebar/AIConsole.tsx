@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useI18n } from '../../i18n'
 import { useOllamaStatus, usePendingCount, usePersona, useTriggerAI } from '../../hooks/useEmails'
+import { useUIStore } from '../../store/uiStore'
 
 function StatusDot({
   running,
@@ -22,7 +23,8 @@ function StatusDot({
 
 export function AIConsole() {
   const { data: status } = useOllamaStatus()
-  const { data: pendingData } = usePendingCount()
+  const selectedAccountId = useUIStore((s) => s.selectedAccountId)
+  const { data: pendingData } = usePendingCount(selectedAccountId)
   const { data: persona } = usePersona()
   const trigger = useTriggerAI()
   const { t } = useI18n()

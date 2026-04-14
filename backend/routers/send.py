@@ -58,6 +58,7 @@ async def send(req: SendRequest, session: AsyncSession = Depends(get_session)):
             subject=send_result.subject,
             body_text=send_result.body_text,
             sent_at=send_result.sent_at,
+            source="local",
         )
         session.add(sent_reply)
         await session.commit()

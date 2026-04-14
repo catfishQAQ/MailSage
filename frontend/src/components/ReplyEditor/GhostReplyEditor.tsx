@@ -46,6 +46,8 @@ export function GhostReplyEditor({ email }: Props) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['email', email.id] })
+      qc.invalidateQueries({ queryKey: ['sent-replies'] })
+      qc.invalidateQueries({ queryKey: ['sent-reply'] })
       setSendSuccess(true)
       setState('ghost')
       setUserInput('')

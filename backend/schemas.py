@@ -21,6 +21,7 @@ class AccountUpdate(BaseModel):
     display_name: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
+    prompt_context: Optional[str] = None
 
 
 class AccountOut(BaseModel):
@@ -33,6 +34,7 @@ class AccountOut(BaseModel):
     smtp_port: int
     is_active: bool
     last_uid: int
+    prompt_context: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -48,6 +50,7 @@ class EmailListItem(BaseModel):
     receive_time: datetime
     is_read: bool
     has_attachments: bool
+    folder: str
     ai_status: AIStatus
     ai_importance: Optional[int]
     ai_is_important: Optional[bool]
@@ -70,6 +73,7 @@ class EmailDetail(BaseModel):
     is_read: bool
     has_attachments: bool
     folder: str
+    folders: list[str] = Field(default_factory=list)
     ai_status: AIStatus
     ai_importance: Optional[int]
     ai_is_important: Optional[bool]
@@ -104,11 +108,14 @@ class AIExpandResponse(BaseModel):
 
 class SentReplyOut(BaseModel):
     id: str
+    account_id: str
     message_id: str
+    source_email_id: str
     recipient: str
     subject: Optional[str]
     body_text: str
     sent_at: datetime
+    source: str
 
     model_config = {"from_attributes": True}
 
@@ -116,6 +123,21 @@ class SentReplyOut(BaseModel):
 class SendResponse(BaseModel):
     ok: bool
     sent_reply: SentReplyOut
+
+
+class SentReplyListResponse(BaseModel):
+    items: list[SentReplyOut]
+    total: int
+    page: int
+    page_size: int
+
+
+class BulkMarkReadRequest(BaseModel):
+    account_id: str
+
+
+class BulkMarkReadResponse(BaseModel):
+    updated_count: int
 
 
 # ── Persona ───────────────────────────────────────────────

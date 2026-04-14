@@ -124,6 +124,7 @@ class SentFolderSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(replies), 1)
         self.assertEqual(replies[0].source_email_id, "email-1")
         self.assertEqual(replies[0].body_text, "Imported from Sent")
+        self.assertEqual(replies[0].source, "synced")
 
     async def test_merge_sent_replies_skips_duplicates_and_unmatched_messages(self):
         await self._seed_account_and_email()

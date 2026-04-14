@@ -1,25 +1,15 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { GhostReplyEditor } from '../ReplyEditor/GhostReplyEditor'
-import { useEmailDetail, useTriggerOneEmail } from '../../hooks/useEmails'
+import { useEmailDetail, useSentReplyDetail, useTriggerOneEmail } from '../../hooks/useEmails'
 import { useI18n } from '../../i18n'
 import { useUIStore } from '../../store/uiStore'
 import { SummaryCard } from './SummaryCard'
 
-export function EmailDetail() {
-  const selectedEmailId = useUIStore((s) => s.selectedEmailId)
-  const { data: email, isLoading } = useEmailDetail(selectedEmailId)
-  const triggerOne = useTriggerOneEmail()
-  const { language, t } = useI18n()
-  const qc = useQueryClient()
+function useFormatDate() {
+  const { language } = useI18n()
 
-  useEffect(() => {
-    if (email?.id) {
-      qc.invalidateQueries({ queryKey: ['emails'] })
-    }
-  }, [email?.id, qc])
-
-  function formatDate(dateStr: string): string {
+  return (dateStr: string): string => {
     const date = new Date(dateStr + 'Z')
     return date.toLocaleString(language, {
       year: 'numeric',
@@ -29,12 +19,67 @@ export function EmailDetail() {
       minute: '2-digit',
     })
   }
+}
 
-  if (!selectedEmailId) {
+export function EmailDetail() {
+  const selectedItemId = useUIStore((s) => s.selectedItemId)
+  const selectedView = useUIStore((s) => s.selectedView)
+  const isSentView = selectedView === 'sent'
+  const { t } = useI18n()
+  const formatDate = useFormatDate()
+
+  const { data: email, isLoading: emailLoading } = useEmailDetail(selectedItemId, !isSentView)
+  const { data: sentReply, isLoading: sentLoading } = useSentReplyDetail(selectedItemId, isSentView)
+  const triggerOne = useTriggerOneEmail()
+  const qc = useQueryClient()
+
+  useEffect(() => {
+    if (!isSentView && email?.id) {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    }
+  }, [email?.id, isSentView, qc])
+
+  if (!selectedItemId) {
     return <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">{t('emailDetailEmpty')}</div>
   }
 
-  if (isLoading) {
+  if (isSentView) {
+    if (sentLoading) {
+      return <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">{t('commonLoading')}</div>
+    }
+
+    if (!sentReply) return null
+
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <div className="border-b border-gray-100 px-4 pt-4 pb-3 shrink-0">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700">
+            {t('sentDetailTitle')}
+          </div>
+          <h2 className="text-base font-semibold text-gray-900 leading-tight">
+            {sentReply.subject || t('sentListNoSubject')}
+          </h2>
+          <div className="mt-3 space-y-0.5 text-xs text-gray-500">
+            <div>
+              <span className="text-gray-400">{t('sentDetailRecipient')}</span>
+              <span>{sentReply.recipient}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">{t('sentDetailTime')}</span>
+              <span>{formatDate(sentReply.sent_at)}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans leading-relaxed">
+            {sentReply.body_text || t('commonNoneBody')}
+          </pre>
+        </div>
+      </div>
+    )
+  }
+
+  if (emailLoading) {
     return <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">{t('commonLoading')}</div>
   }
 
@@ -65,7 +110,7 @@ export function EmailDetail() {
               className="shrink-0 text-xs text-gray-400 hover:text-blue-600 transition-colors"
               title={t('emailDetailReanalyzeTitle')}
             >
-              {isAnalyzing ? '…' : t('emailDetailReanalyze')}
+              {isAnalyzing ? '...' : t('emailDetailReanalyze')}
             </button>
           )}
         </div>
@@ -79,6 +124,25 @@ export function EmailDetail() {
             <span className="text-gray-400">{t('emailDetailTime')}</span>
             <span>{formatDate(email.receive_time)}</span>
           </div>
+          <div>
+            <span className="text-gray-400">{t('emailDetailFolder')}</span>
+            <span>{email.folder}</span>
+          </div>
+          {email.folders.length > 1 && (
+            <div className="flex items-start gap-2">
+              <span className="text-gray-400 shrink-0">{t('emailDetailFolders')}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {email.folders.map((folder) => (
+                  <span
+                    key={folder}
+                    className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700"
+                  >
+                    {folder}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -90,7 +154,7 @@ export function EmailDetail() {
 
       {email.ai_status === 'processing' && (
         <div className="mx-4 mt-3 mb-1 text-xs text-yellow-600 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse inline-block" />
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-400" />
           {t('emailDetailAiProcessing')}
         </div>
       )}
@@ -123,9 +187,7 @@ export function EmailDetail() {
               >
                 <div className="flex items-start justify-between gap-3 text-xs">
                   <div className="min-w-0">
-                    {reply.subject && (
-                      <div className="truncate font-medium text-sky-900">{reply.subject}</div>
-                    )}
+                    {reply.subject && <div className="truncate font-medium text-sky-900">{reply.subject}</div>}
                     <div className="text-sky-700/80">
                       {t('emailDetailSentTo')} {reply.recipient}
                     </div>

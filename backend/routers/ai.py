@@ -86,7 +86,7 @@ async def expand_reply_endpoint(
     body: AIExpandRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    from models import UserPersona
+    from models import Account, UserPersona
     from sqlalchemy import select
 
     persona_result = await session.execute(select(UserPersona).limit(1))
@@ -101,6 +101,8 @@ async def expand_reply_endpoint(
     em = await session.get(Email, body.email_id)
     subject = em.subject if em else ""
     sender = em.sender if em else ""
+    account = await session.get(Account, em.account_id) if em else None
+    account_prompt_context = account.prompt_context if account else None
 
     expanded = await expand_reply(
         draft=body.draft,
@@ -111,6 +113,7 @@ async def expand_reply_endpoint(
         tone=tone,
         model=model,
         reply_system_prompt=reply_system_prompt,
+        account_prompt_context=account_prompt_context,
         language=language,
     )
     return AIExpandResponse(expanded=expanded)

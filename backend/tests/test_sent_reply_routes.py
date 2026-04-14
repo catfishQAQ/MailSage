@@ -13,7 +13,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from database import Base
-from models import Account, Email, SentReply
+from models import AIStatus, Account, Email, EmailFolderCopy, SentReply
 from routers import emails as emails_router
 from routers import send as send_router
 from services.smtp_service import SendEmailResult
@@ -68,6 +68,18 @@ class SentReplyRouteTests(unittest.IsolatedAsyncioTestCase):
             )
             session.add(account)
             session.add(email)
+            session.add(
+                EmailFolderCopy(
+                    id="copy-1",
+                    email_id=email.id,
+                    account_id=account.id,
+                    mailbox="INBOX",
+                    role="inbox",
+                    uid=101,
+                    is_read=True,
+                    last_synced_at=datetime(2026, 4, 13, 15, 0, 0),
+                )
+            )
             await session.commit()
             return account.id, email.id
 
@@ -103,6 +115,7 @@ class SentReplyRouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].source_email_id, "email-1")
             self.assertEqual(rows[0].body_text, "Reply body")
+            self.assertEqual(rows[0].source, "local")
 
     async def test_send_route_does_not_persist_sent_reply_on_failure(self):
         account_id, _ = await self._seed_source_email()
@@ -161,8 +174,168 @@ class SentReplyRouteTests(unittest.IsolatedAsyncioTestCase):
             detail = await emails_router.get_email(email_id, session=session)
 
         self.assertEqual([reply.id for reply in detail.sent_replies], ["reply-1", "reply-2"])
+        self.assertEqual(detail.folder, "INBOX")
+        self.assertEqual(detail.folders, ["INBOX"])
         self.assertEqual(detail.sent_replies[0].body_text, "First reply")
         self.assertEqual(detail.sent_replies[1].body_text, "Second reply")
+
+    async def test_list_sent_replies_returns_account_scoped_results(self):
+        account_id, email_id = await self._seed_source_email()
+
+        async with self.session_factory() as session:
+            other_account = Account(
+                id="account-2",
+                email="other@example.com",
+                display_name="Other",
+                imap_host="imap.other.com",
+                imap_port=993,
+                imap_use_ssl=True,
+                smtp_host="smtp.other.com",
+                smtp_port=465,
+                smtp_use_ssl=True,
+                encrypted_password="ciphertext",
+                last_uid=0,
+                is_active=True,
+            )
+            other_email = Email(
+                id="email-2",
+                message_id="<other-source@example.com>",
+                account_id=other_account.id,
+                uid=202,
+                sender="another@example.com",
+                sender_name="Another",
+                recipients="[]",
+                subject="Other incoming",
+                body_text="Other body",
+                body_html=None,
+                receive_time=datetime(2026, 4, 13, 16, 0, 0),
+                is_read=True,
+                has_attachments=False,
+                folder="INBOX",
+            )
+            session.add_all(
+                [
+                    other_account,
+                    other_email,
+                    SentReply(
+                        id="reply-1",
+                        source_email_id=email_id,
+                        account_id=account_id,
+                        message_id="<sent-1@example.com>",
+                        in_reply_to="<source@example.com>",
+                        references="<source@example.com>",
+                        recipient="recipient@example.com",
+                        subject="Re: Important test",
+                        body_text="First reply",
+                        sent_at=datetime(2026, 4, 13, 15, 5, 0),
+                        source="local",
+                    ),
+                    SentReply(
+                        id="reply-2",
+                        source_email_id=other_email.id,
+                        account_id=other_account.id,
+                        message_id="<sent-2@example.com>",
+                        in_reply_to="<other-source@example.com>",
+                        references="<other-source@example.com>",
+                        recipient="another@example.com",
+                        subject="Re: Other incoming",
+                        body_text="Second reply",
+                        sent_at=datetime(2026, 4, 13, 16, 5, 0),
+                        source="synced",
+                    ),
+                ]
+            )
+            await session.commit()
+
+        async with self.session_factory() as session:
+            response = await emails_router.list_sent_replies(
+                account_id=account_id,
+                page=1,
+                page_size=50,
+                session=session,
+            )
+
+        self.assertEqual(response.total, 1)
+        self.assertEqual([item.id for item in response.items], ["reply-1"])
+        self.assertEqual(response.items[0].source, "local")
+
+    async def test_mark_all_unread_as_read_updates_only_current_account(self):
+        account_id, email_id = await self._seed_source_email()
+
+        async with self.session_factory() as session:
+            email = await session.get(Email, email_id)
+            email.is_read = False
+            email.ai_status = AIStatus.pending
+            copy = (
+                await session.execute(select(EmailFolderCopy).where(EmailFolderCopy.email_id == email_id))
+            ).scalar_one()
+            copy.is_read = False
+
+            other_account = Account(
+                id="account-2",
+                email="other@example.com",
+                display_name="Other",
+                imap_host="imap.other.com",
+                imap_port=993,
+                imap_use_ssl=True,
+                smtp_host="smtp.other.com",
+                smtp_port=465,
+                smtp_use_ssl=True,
+                encrypted_password="ciphertext",
+                last_uid=0,
+                is_active=True,
+            )
+            other_email = Email(
+                id="email-2",
+                message_id="<other-source@example.com>",
+                account_id=other_account.id,
+                uid=202,
+                sender="another@example.com",
+                sender_name="Another",
+                recipients="[]",
+                subject="Other incoming",
+                body_text="Other body",
+                body_html=None,
+                receive_time=datetime(2026, 4, 13, 16, 0, 0),
+                is_read=False,
+                has_attachments=False,
+                folder="INBOX",
+                ai_status=AIStatus.pending,
+            )
+            other_copy = EmailFolderCopy(
+                id="copy-2",
+                email_id=other_email.id,
+                account_id=other_account.id,
+                mailbox="INBOX",
+                role="inbox",
+                uid=202,
+                is_read=False,
+                last_synced_at=datetime(2026, 4, 13, 16, 0, 0),
+            )
+            session.add_all([other_account, other_email, other_copy])
+            await session.commit()
+
+        async with self.session_factory() as session:
+            with patch.object(emails_router, "mark_copies_as_read", return_value=1) as mark_mock:
+                result = await emails_router.mark_all_unread_as_read(
+                    emails_router.BulkMarkReadRequest(account_id=account_id),
+                    session=session,
+                )
+
+        self.assertEqual(result.updated_count, 1)
+        mark_mock.assert_called_once()
+
+        async with self.session_factory() as session:
+            current_email = await session.get(Email, email_id)
+            current_copy = (
+                await session.execute(select(EmailFolderCopy).where(EmailFolderCopy.email_id == email_id))
+            ).scalar_one()
+            other_email = await session.get(Email, "email-2")
+
+        self.assertTrue(current_email.is_read)
+        self.assertEqual(current_email.ai_status, AIStatus.completed)
+        self.assertTrue(current_copy.is_read)
+        self.assertFalse(other_email.is_read)
 
 
 if __name__ == "__main__":

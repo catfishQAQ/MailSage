@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api'
-import { useOllamaStatus, usePersona } from '../../hooks/useEmails'
+import { useAccounts, useOllamaStatus, usePersona } from '../../hooks/useEmails'
 import { type AppLanguage, getPromptTemplates, getScheduleOptions, useI18n } from '../../i18n'
+import { useUIStore } from '../../store/uiStore'
 
 interface Props {
   onClose: () => void
@@ -14,9 +15,25 @@ const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
 const textareaCls =
   'w-full border border-gray-200 rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-400 resize-none'
 
+function fillPrompt(template: string, role: string, focus: string, tone: string) {
+  return template
+    .split('{role}')
+    .join(role || '')
+    .split('{focus}')
+    .join(focus || '')
+    .split('{tone}')
+    .join(tone || '')
+}
+
+function joinPromptSections(...parts: Array<string | null | undefined>) {
+  return parts.map((part) => (part || '').trim()).filter(Boolean).join('\n\n')
+}
+
 export function SettingsModal({ onClose }: Props) {
   const { data: persona } = usePersona()
   const { data: status } = useOllamaStatus()
+  const { data: accounts = [] } = useAccounts()
+  const selectedAccountId = useUIStore((s) => s.selectedAccountId)
   const { language, setLanguage, t } = useI18n()
   const qc = useQueryClient()
 
@@ -31,6 +48,8 @@ export function SettingsModal({ onClose }: Props) {
   const [analysisPrompt, setAnalysisPrompt] = useState<string | null>(null)
   const [replyPrompt, setReplyPrompt] = useState<string | null>(null)
   const [showPrompts, setShowPrompts] = useState(false)
+  const [promptAccountId, setPromptAccountId] = useState<string>('')
+  const [accountPromptContext, setAccountPromptContext] = useState('')
 
   useEffect(() => {
     if (persona) {
@@ -56,14 +75,56 @@ export function SettingsModal({ onClose }: Props) {
     if (currentDefaults.includes(tone)) {
       setTone(getPromptTemplates(selectedLanguage).defaultTone)
     }
-  }, [selectedLanguage])
+  }, [selectedLanguage, tone])
+
+  useEffect(() => {
+    if (accounts.length === 0) {
+      setPromptAccountId('')
+      setAccountPromptContext('')
+      return
+    }
+
+    const preferredId =
+      (selectedAccountId && accounts.some((account) => account.id === selectedAccountId) && selectedAccountId) ||
+      promptAccountId ||
+      accounts[0].id
+    const account = accounts.find((item) => item.id === preferredId) ?? accounts[0]
+    setPromptAccountId(account.id)
+    setAccountPromptContext(account.prompt_context || '')
+  }, [accounts, promptAccountId, selectedAccountId])
+
+  useEffect(() => {
+    const account = accounts.find((item) => item.id === promptAccountId)
+    setAccountPromptContext(account?.prompt_context || '')
+  }, [accounts, promptAccountId])
 
   const promptTemplates = getPromptTemplates(selectedLanguage)
   const scheduleOptions = getScheduleOptions(selectedLanguage)
 
+  const analysisPromptPreview = useMemo(
+    () =>
+      joinPromptSections(
+        fillPrompt(promptTemplates.analysisPrefix, role, focus, tone),
+        analysisPrompt,
+        accountPromptContext,
+        promptTemplates.analysisJsonSuffix,
+      ),
+    [accountPromptContext, analysisPrompt, focus, promptTemplates, role, tone],
+  )
+
+  const replyPromptPreview = useMemo(
+    () =>
+      joinPromptSections(
+        fillPrompt(promptTemplates.replyPrompt, role, focus, tone),
+        replyPrompt,
+        accountPromptContext,
+      ),
+    [accountPromptContext, focus, promptTemplates, replyPrompt, role, tone],
+  )
+
   const save = useMutation({
-    mutationFn: () =>
-      api.settings.updatePersona({
+    mutationFn: async () => {
+      await api.settings.updatePersona({
         role,
         focus,
         tone,
@@ -72,17 +133,25 @@ export function SettingsModal({ onClose }: Props) {
         language: selectedLanguage,
         analysis_system_prompt: analysisPrompt === null ? '' : analysisPrompt,
         reply_system_prompt: replyPrompt === null ? '' : replyPrompt,
-      }),
+      })
+
+      if (promptAccountId) {
+        await api.accounts.update(promptAccountId, {
+          prompt_context: accountPromptContext || null,
+        })
+      }
+    },
     onSuccess: () => {
       setLanguage(selectedLanguage)
       qc.invalidateQueries({ queryKey: ['persona'] })
+      qc.invalidateQueries({ queryKey: ['accounts'] })
       onClose()
     },
   })
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-[420px] p-5 space-y-5 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="max-h-[90vh] w-[480px] overflow-y-auto rounded-xl bg-white p-5 shadow-xl space-y-5">
         <h3 className="font-semibold text-gray-800">{t('settingsTitle')}</h3>
 
         <div className="space-y-3">
@@ -154,7 +223,7 @@ export function SettingsModal({ onClose }: Props) {
                   <code className="bg-gray-100 px-1 rounded mx-0.5">{'{tone}'}</code>
                 </p>
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="mb-1 flex items-center justify-between">
                     <label className={labelCls}>{t('settingsAnalysisInstruction')}</label>
                     <button
                       type="button"
@@ -166,22 +235,23 @@ export function SettingsModal({ onClose }: Props) {
                   </div>
                   <textarea
                     rows={4}
-                    value={analysisPrompt ?? promptTemplates.analysisPrefix}
+                    value={analysisPrompt ?? ''}
                     onChange={(e) => setAnalysisPrompt(e.target.value)}
+                    placeholder={t('settingsAnalysisInstructionPlaceholder')}
                     className={textareaCls}
                   />
                   <div className="mt-2">
-                    <p className="text-xs text-gray-400 mb-1">{t('settingsFixedSuffix')}</p>
+                    <p className="text-xs text-gray-400 mb-1">{t('settingsAnalysisPromptReadonly')}</p>
                     <textarea
                       readOnly
-                      rows={3}
-                      value={promptTemplates.analysisJsonSuffix}
-                      className="w-full border border-gray-100 rounded px-3 py-2 text-xs font-mono bg-gray-50 text-gray-400 resize-none cursor-not-allowed"
+                      rows={8}
+                      value={analysisPromptPreview}
+                      className="w-full cursor-not-allowed rounded border border-gray-100 bg-gray-50 px-3 py-2 text-xs font-mono text-gray-500 resize-none"
                     />
                   </div>
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="mb-1 flex items-center justify-between">
                     <label className={labelCls}>{t('settingsReplyInstruction')}</label>
                     <button
                       type="button"
@@ -193,13 +263,60 @@ export function SettingsModal({ onClose }: Props) {
                   </div>
                   <textarea
                     rows={4}
-                    value={replyPrompt ?? promptTemplates.replyPrompt}
+                    value={replyPrompt ?? ''}
                     onChange={(e) => setReplyPrompt(e.target.value)}
+                    placeholder={t('settingsReplyInstructionPlaceholder')}
                     className={textareaCls}
                   />
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-400 mb-1">{t('settingsReplyPromptReadonly')}</p>
+                    <textarea
+                      readOnly
+                      rows={8}
+                      value={replyPromptPreview}
+                      className="w-full cursor-not-allowed rounded border border-gray-100 bg-gray-50 px-3 py-2 text-xs font-mono text-gray-500 resize-none"
+                    />
+                  </div>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-1">
+            {t('settingsAccountPromptSection')}
+          </div>
+          <p className="text-xs text-gray-500">{t('settingsAccountPromptHelp')}</p>
+          <div>
+            <label className={labelCls}>{t('settingsAccountPromptAccount')}</label>
+            <select
+              value={promptAccountId}
+              onChange={(e) => setPromptAccountId(e.target.value)}
+              className={inputCls}
+              disabled={accounts.length === 0}
+            >
+              {accounts.length === 0 ? (
+                <option value="">{t('settingsAccountPromptNoAccounts')}</option>
+              ) : (
+                accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.display_name || account.email}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>{t('settingsAccountPromptLabel')}</label>
+            <textarea
+              rows={4}
+              value={accountPromptContext}
+              onChange={(e) => setAccountPromptContext(e.target.value)}
+              placeholder={t('settingsAccountPromptPlaceholder')}
+              className={`${inputCls} resize-none`}
+              disabled={!promptAccountId}
+            />
           </div>
         </div>
 
@@ -221,9 +338,7 @@ export function SettingsModal({ onClose }: Props) {
                 </option>
               ))}
             </select>
-            {models.length === 0 && (
-              <p className="text-xs text-gray-400 mt-1">{t('settingsNoModels')}</p>
-            )}
+            {models.length === 0 && <p className="mt-1 text-xs text-gray-400">{t('settingsNoModels')}</p>}
           </div>
         </div>
 
@@ -249,10 +364,7 @@ export function SettingsModal({ onClose }: Props) {
         </div>
 
         <div className="flex justify-end gap-2 pt-1">
-          <button
-            onClick={onClose}
-            className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5"
-          >
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5">
             {t('commonCancel')}
           </button>
           <button
@@ -264,9 +376,7 @@ export function SettingsModal({ onClose }: Props) {
           </button>
         </div>
 
-        {save.isError && (
-          <p className="text-xs text-red-500 text-right">{t('settingsSaveFailed')}</p>
-        )}
+        {save.isError && <p className="text-xs text-red-500 text-right">{t('settingsSaveFailed')}</p>}
       </div>
     </div>
   )

@@ -1,32 +1,50 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { AIStatus } from '../types'
+import type { AIStatus, MailboxView } from '../types'
 
 export function useEmailList(params: {
   account_id?: string
   ai_status?: AIStatus
-  is_important?: boolean
+  view?: Exclude<MailboxView, 'sent'>
   page?: number
 }) {
   return useQuery({
     queryKey: ['emails', params],
     queryFn: () => api.emails.list({ ...params, page_size: 50 }),
+    enabled: !!params.account_id,
     refetchInterval: 60_000,
   })
 }
 
-export function useEmailDetail(id: string | null) {
+export function useSentReplyList(params: { account_id?: string; page?: number }) {
   return useQuery({
-    queryKey: ['email', id],
-    queryFn: () => api.emails.get(id!),
-    enabled: id != null,
+    queryKey: ['sent-replies', params],
+    queryFn: () => api.emails.listSent({ ...params, page_size: 50 }),
+    enabled: !!params.account_id,
+    refetchInterval: 60_000,
   })
 }
 
-export function usePendingCount() {
+export function useEmailDetail(id: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['pending-count'],
-    queryFn: () => api.emails.pendingCount(),
+    queryKey: ['email', id],
+    queryFn: () => api.emails.get(id!),
+    enabled: enabled && id != null,
+  })
+}
+
+export function useSentReplyDetail(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['sent-reply', id],
+    queryFn: () => api.emails.getSent(id!),
+    enabled: enabled && id != null,
+  })
+}
+
+export function usePendingCount(accountId?: string | null) {
+  return useQuery({
+    queryKey: ['pending-count', accountId ?? 'all'],
+    queryFn: () => api.emails.pendingCount(accountId ?? undefined),
     refetchInterval: 10_000,
   })
 }
@@ -45,11 +63,15 @@ export function useSyncAccount() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
       qc.invalidateQueries({ queryKey: ['email'] })
+      qc.invalidateQueries({ queryKey: ['sent-replies'] })
+      qc.invalidateQueries({ queryKey: ['sent-reply'] })
       qc.invalidateQueries({ queryKey: ['pending-count'] })
-      // IMAP 同步是后台任务（202），延迟多次重拉以覆盖同步窗口期
       setTimeout(() => qc.invalidateQueries({ queryKey: ['emails'] }), 3000)
       setTimeout(() => qc.invalidateQueries({ queryKey: ['emails'] }), 7000)
       setTimeout(() => qc.invalidateQueries({ queryKey: ['emails'] }), 12000)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['sent-replies'] }), 3000)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['sent-replies'] }), 7000)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['sent-replies'] }), 12000)
       setTimeout(() => qc.invalidateQueries({ queryKey: ['email'] }), 3000)
       setTimeout(() => qc.invalidateQueries({ queryKey: ['email'] }), 7000)
       setTimeout(() => qc.invalidateQueries({ queryKey: ['email'] }), 12000)
@@ -75,6 +97,18 @@ export function useTriggerOneEmail() {
       qc.invalidateQueries({ queryKey: ['email', id] })
       qc.invalidateQueries({ queryKey: ['emails'] })
       qc.invalidateQueries({ queryKey: ['pending-count'] })
+    },
+  })
+}
+
+export function useMarkAllRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (accountId: string) => api.emails.markAllRead(accountId),
+    onSuccess: (_, accountId) => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['email'] })
+      qc.invalidateQueries({ queryKey: ['pending-count', accountId] })
     },
   })
 }
@@ -111,6 +145,7 @@ export function useDeleteAccount() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] })
       qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['sent-replies'] })
     },
   })
 }
@@ -118,8 +153,13 @@ export function useDeleteAccount() {
 export function useUpdateAccount() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { password?: string; display_name?: string } }) =>
-      api.accounts.update(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string
+      data: { password?: string; display_name?: string; prompt_context?: string | null }
+    }) => api.accounts.update(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] })
     },
